@@ -1,0 +1,115 @@
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowDown, ArrowRight, ArrowUpRight, CalendarDays, Camera, Check, ChevronDown, Heart, Lightbulb, MapPin, Plus, Sparkles, Trash2, Users, Wine, X } from 'lucide-react';
+import type { Attendance, Data, Profile, Proposal } from './types';
+import { addProposal, cloud, getIdentity, join, loadData, removeProposal, saveProfile, toggleVote } from './data';
+import { attendanceTotal, safeLink } from './validation.mjs';
+
+type Tab = 'overview' | 'people' | 'places' | 'ideas' | 'photos';
+const tabs: { id: Tab; name: string; icon: typeof Users }[] = [{ id: 'overview', name: 'La serata', icon: Sparkles }, { id: 'people', name: 'Partecipanti', icon: Users }, { id: 'places', name: 'Dove andiamo', icon: MapPin }, { id: 'ideas', name: 'Idee & proposte', icon: Lightbulb }, { id: 'photos', name: 'Le nostre foto', icon: Camera }];
+const statuses = { yes: 'Ci sono', maybe: 'Forse', no: 'Non ci sono' };
+const initials = (name: string) => name.split(/\s+/).slice(0, 2).map(n => n[0]).join('').toUpperCase();
+const date = new Date('2027-01-01T00:00:00+01:00');
+
+function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const dialog = ref.current!; dialog.showModal(); return () => dialog.close(); }, []);
+  return <dialog ref={ref} aria-labelledby="modal-title" onCancel={close} onClick={e => { if (e.target === ref.current) close(); }}><div className="modal-content"><div className="modal-heading"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Chiudi finestra" onClick={close}><X size={22}/></button></div>{children}</div></dialog>;
+}
+
+export default function App() {
+  const [data, setData] = useState<Data>({ profiles: [], proposals: [], votes: [] });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [modal, setModal] = useState<'join' | 'profile' | 'place' | 'idea' | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('recent');
+  const [tick, setTick] = useState(Date.now());
+  const me = data.profiles.find(p => p.id === userId);
+  const places = data.proposals.filter(p => p.kind === 'place');
+  const ideas = data.proposals.filter(p => p.kind === 'idea');
+  const confirmed = attendanceTotal(data.profiles);
+  const maybe = data.profiles.filter(p => p.attendance === 'maybe').length;
+  const days = Math.max(0, Math.ceil((date.getTime() - tick) / 86400000));
+  async function refresh() { const [id, next] = await Promise.all([getIdentity(), loadData()]); setUserId(id); setData(next); }
+  useEffect(() => {
+    let active = true;
+    const sync = async () => { try { const [id, next] = await Promise.all([getIdentity(), loadData()]); if (active) { setUserId(id); setData(next); } } catch (e) { if (active) setError(e instanceof Error ? e.message : 'Impossibile caricare i dati.'); } finally { if (active) setLoading(false); } };
+    void sync();
+    const interval = window.setInterval(() => { setTick(Date.now()); void sync(); }, 20000);
+    window.addEventListener('focus', sync); window.addEventListener('storage', sync);
+    return () => { active = false; clearInterval(interval); window.removeEventListener('focus', sync); window.removeEventListener('storage', sync); };
+  }, []);
+  useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer); } }, [notice]);
+  function navigate(next: Tab) { setTab(next); setFilter('all'); setSort('recent'); }
+  function open(kind: 'place' | 'idea' | 'profile') { setError(''); setModal(me ? kind : 'join'); }
+  async function act(action: () => Promise<unknown>, message: string, close = true) {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await action(); await refresh(); if (close) setModal(null); setNotice(message); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Qualcosa non ha funzionato. Riprova.'); }
+    finally { setBusy(false); }
+  }
+  async function submitJoin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const form = new FormData(e.currentTarget); const name = String(form.get('name')).trim();
+    if (name.length < 2) { setError('Inserisci un nome di almeno 2 caratteri.'); return; }
+    await act(() => join(name), 'Benvenuto a bordo! Ora puoi confermare la tua presenza.');
+  }
+  async function submitProfile(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); if (!me) return;
+    const form = new FormData(e.currentTarget); const name = String(form.get('name')).trim();
+    if (name.length < 2) { setError('Inserisci un nome di almeno 2 caratteri.'); return; }
+    await act(() => saveProfile({ ...me, name, attendance: String(form.get('attendance')) as Attendance, guests: Number(form.get('guests')), note: String(form.get('note')).trim() }), 'La tua presenza è aggiornata.');
+  }
+  async function submitProposal(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); if (!me) return;
+    const form = new FormData(e.currentTarget); const title = String(form.get('title')).trim(); const link = safeLink(String(form.get('link') || ''));
+    if (title.length < 3) { setError('Il titolo deve avere almeno 3 caratteri.'); return; }
+    if (link === null) { setError('Inserisci un link completo che inizi con https:// o http://.'); return; }
+    const budget = form.get('budget');
+    const proposal: Proposal = { id: crypto.randomUUID(), user_id: me.id, kind: modal === 'place' ? 'place' : 'idea', title, description: String(form.get('description') || '').trim(), location: String(form.get('location') || '').trim(), budget: budget === '' || budget === null ? null : Number(budget), link, category: String(form.get('category') || 'Altro'), created_at: new Date().toISOString() };
+    await act(() => addProposal(proposal), 'Proposta aggiunta. Facciamo scegliere al gruppo!');
+  }
+  function proposalCard(p: Proposal) {
+    const author = data.profiles.find(person => person.id === p.user_id);
+    const votes = data.votes.filter(v => v.proposal_id === p.id);
+    const voted = votes.some(v => v.user_id === userId);
+    return <article className="proposal" key={p.id}>
+      <div className={`proposal-banner ${p.kind === 'place' ? 'green' : 'peach'}`}><span>{p.kind === 'place' ? <MapPin size={27}/> : <Lightbulb size={27}/>}</span><span className="pill">{p.kind === 'place' ? 'Una possibile destinazione' : p.category}</span></div>
+      <div className="proposal-body"><h3>{p.title}</h3>{p.location && <p className="location"><MapPin size={14}/>{p.location}</p>}<p className="description">{p.description || 'Una nuova proposta per la nostra serata.'}</p>
+      {p.budget !== null && <p className="budget">€ {p.budget.toLocaleString('it-IT')} <span>/ persona, indicativi</span></p>}
+      {p.link && <a className="text-link" href={p.link} target="_blank" rel="noopener noreferrer">Scopri di più <ArrowUpRight size={15}/></a>}
+      <div className="proposal-footer"><span className="author"><span className="tiny-avatar">{initials(author?.name || '?')}</span>{author?.name || 'Partecipante'}</span><button className={`vote ${voted ? 'voted' : ''}`} aria-label={`${voted ? 'Rimuovi voto da' : 'Vota'} ${p.title}`} aria-pressed={voted} disabled={busy} onClick={() => { if (!me) { setModal('join'); return; } void act(() => toggleVote(me.id, p.id, voted), voted ? 'Voto rimosso.' : 'Voto aggiunto.', false); }}><Heart size={16} fill={voted ? 'currentColor' : 'none'}/>{votes.length}</button></div>
+      {p.user_id === userId && <button className="delete" disabled={busy} onClick={() => { if (window.confirm(`Eliminare “${p.title}” e i suoi voti?`)) void act(() => removeProposal(p.id), 'Proposta eliminata.', false); }}><Trash2 size={13}/>Elimina proposta</button>}
+      </div></article>;
+  }
+  function emptyState(kind: 'place' | 'idea') { return <div className={`empty-card ${kind === 'place' ? 'mint' : 'butter'}`}><div className="empty-illustration">{kind === 'place' ? <MapPin size={34} strokeWidth={1.4}/> : <Lightbulb size={34} strokeWidth={1.4}/>}<span>✧</span></div><h3>{kind === 'place' ? 'Il posto giusto? Proponilo tu.' : 'Le serate migliori iniziano da un’idea.'}</h3><p>{kind === 'place' ? 'Una casa in montagna, una città da scoprire, quel posto che conosci solo tu.' : 'Un tema, un menu speciale o qualcosa da fare insieme. Qui c’è spazio per tutto.'}</p><button className="text-link" onClick={() => open(kind)}>{kind === 'place' ? 'Proponi una località' : 'Condividi la prima idea'}<ArrowRight size={17}/></button></div>; }
+  const sorted = data.proposals.filter(p => p.kind === (tab === 'places' ? 'place' : 'idea')).sort((a, b) => sort === 'votes' ? data.votes.filter(v => v.proposal_id === b.id).length - data.votes.filter(v => v.proposal_id === a.id).length : b.created_at.localeCompare(a.created_at));
+
+  return <><header className="header"><a className="brand" href="#" onClick={e => { e.preventDefault(); navigate('overview'); }}><span className="brand-mark"><Sparkles size={21}/></span>capodanno<span className="brand-light">insieme</span><span className="year-tag">’27</span></a><div className="header-right"><span className="date-label"><CalendarDays size={15}/>31 dicembre 2026</span><button className={me ? 'profile-button' : 'button small dark'} onClick={() => { setError(''); setModal(me ? 'profile' : 'join'); }}>{me ? <><span className="tiny-avatar orange">{initials(me.name)}</span><span>{me.name}</span><ChevronDown size={14}/></> : <>Entra nel gruppo<ArrowUpRight size={16}/></>}</button></div></header>
+    <main><div className="mode-bar"><span className={`status-dot ${cloud ? 'connected' : ''}`}/>{cloud ? 'Spazio condiviso · aggiornamento ogni 20 secondi' : 'Modalità demo · i dati restano solo in questo browser'}<span className="mode-tag">{cloud ? 'SUPABASE' : 'ANTEPRIMA'}</span></div>
+      <section className="hero"><div className="hero-copy"><div className="eyebrow"><span/>IL CONTO ALLA ROVESCIA È INIZIATO</div><h1>Un nuovo anno.<br/>La nostra <em>serata.</em><span className="hand-star">✳</span></h1><p>Il posto, le persone, le idee giuste.<br/>Organizziamo un Capodanno da ricordare, insieme.</p><div className="hero-actions"><button className="button coral" onClick={() => open('profile')}>{me ? 'La mia presenza' : 'Io ci sono. E tu?'}<ArrowUpRight size={18}/></button><button className="hero-secondary" onClick={() => { navigate('places'); document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth' }); }}>Esplora le proposte<ArrowDown size={16}/></button></div><div className="hero-foot"><span className="mini-spark">✦</span> Nessun piano perfetto. Solo la compagnia giusta.</div></div>
+      <div className="hero-art" aria-label="Illustrazione di un brindisi per il 2027"><span className="orbit orbit-one"/><span className="orbit orbit-two"/><span className="art-star star-one">✦</span><span className="art-star star-two">✧</span><span className="art-star star-three">✳</span><span className="art-dot dot-one"/><span className="art-dot dot-two"/><div className="ticket"><span>BUONE COSE IN ARRIVO</span><strong>20<br/><em>27</em></strong><div className="ticket-bottom"><Wine size={21}/>LET’S MAKE MEMORIES</div></div><div className="countdown"><span>AL PROSSIMO BRINDISI</span><strong>{days}<small>giorni</small></strong><span>31.12.26 <span>→</span> 01.01.27</span></div><div className="art-note">stesso gruppo,<br/>nuovi ricordi ↗</div></div></section>
+      <div className="stats"><button onClick={() => navigate('people')}><span className="stat-icon mint"><Users size={20}/></span><div><strong>{confirmed.toString().padStart(2, '0')}</strong><span>presenze confermate</span></div><ArrowUpRight size={17}/></button><button onClick={() => navigate('places')}><span className="stat-icon peach"><MapPin size={20}/></span><div><strong>{places.length.toString().padStart(2, '0')}</strong><span>località proposte</span></div><ArrowUpRight size={17}/></button><button onClick={() => navigate('ideas')}><span className="stat-icon butter"><Lightbulb size={20}/></span><div><strong>{ideas.length.toString().padStart(2, '0')}</strong><span>idee sul tavolo</span></div><ArrowUpRight size={17}/></button><div className="stat-caption">Tutto parte<br/>da <em>noi.</em><Sparkles size={25}/></div></div>
+      <nav className="tabs" id="workspace" aria-label="Sezioni dell’organizzatore">{tabs.map(t => <button key={t.id} className={tab === t.id ? 'active' : ''} aria-current={tab === t.id ? 'page' : undefined} onClick={() => navigate(t.id)}><t.icon size={17}/>{t.name}{t.id === 'photos' && <span className="soon">PRESTO</span>}</button>)}</nav>
+      {error && <div className="alert" role="alert">{error}<button className="text-link" onClick={() => void act(refresh, 'Dati aggiornati.', false)} disabled={busy}>Riprova</button></div>}
+      {loading ? <div className="loading" role="status">Prepariamo il nostro spazio…</div> : <>
+      {tab === 'overview' && <div className="overview"><div className="overview-main"><section><div className="section-heading"><div><div className="eyebrow subdued">LA DESTINAZIONE</div><h2>Dove ci porta la serata?</h2><p>Scegliamo il posto. Al resto pensiamo insieme.</p></div><button className="outline-button" onClick={() => open('place')}><Plus size={16}/>Proponi un posto</button></div>{places.length ? <div className="cards">{places.slice(0, 2).map(proposalCard)}</div> : emptyState('place')}{places.length > 2 && <button className="text-link more" onClick={() => navigate('places')}>Vedi tutte le {places.length} località<ArrowRight size={16}/></button>}</section><section className="ideas-section"><div className="section-heading"><div><div className="eyebrow subdued">LA BACHECA</div><h2>Mettiamoci le idee.</h2></div><button className="text-link" onClick={() => navigate('ideas')}>Tutte le idee<ArrowRight size={16}/></button></div>{ideas.length ? <div className="cards">{ideas.slice(0, 2).map(proposalCard)}</div> : emptyState('idea')}</section></div><aside><div className="attendance-card"><span className="eyebrow subdued">CI VEDIAMO A MEZZANOTTE?</span><div className="aside-symbol"><Wine size={29}/><Sparkles size={18}/></div><h2>{me ? `Ciao, ${me.name}.` : 'Manca solo il tuo sì.'}</h2><p>{me ? `La tua risposta: ${statuses[me.attendance].toLowerCase()}. Puoi cambiarla quando vuoi.` : 'Entra nel gruppo e facci sapere se sarai dei nostri. Il primo passo è questo.'}</p><button className="button dark full" onClick={() => open('profile')}>{me ? 'Aggiorna presenza' : 'Aggiungiti al gruppo'}<ArrowUpRight size={17}/></button><div className="attendance-summary"><span><span className="status-dot connected"/>{confirmed} confermati</span><span>{maybe} indecisi</span></div>{data.profiles.length > 0 && <div className="avatar-stack">{data.profiles.slice(0, 6).map(p => <span key={p.id} title={p.name} className="tiny-avatar">{initials(p.name)}</span>)}<button className="text-link" onClick={() => navigate('people')}>Il gruppo<ArrowRight size={14}/></button></div>}</div><div className="photo-teaser"><div className="photo-outline"><Camera size={31}/><span>✧</span></div><h3>I ricordi, tra poco.</h3><p>Uno spazio per raccogliere tutte le foto della nostra serata. Arriva più avanti.</p><span className="pill">ALBUM IN ARRIVO</span></div><p className="aside-note">31 dicembre, un solo proposito:<br/><strong>stare bene insieme.</strong></p></aside></div>}
+      {tab === 'people' && <section className="page-section"><div className="section-heading"><div><div className="eyebrow subdued">IL NOSTRO GRUPPO</div><h2>Le persone fanno la festa.</h2><p>{confirmed} presenze confermate, accompagnatori inclusi.</p></div><button className="button dark" onClick={() => open('profile')}>{me ? 'La mia presenza' : 'Unisciti al gruppo'}<Plus size={16}/></button></div><div className="filter-row" aria-label="Filtra partecipanti">{[['all', 'Tutti'], ['yes', 'Ci sono'], ['maybe', 'Forse'], ['no', 'Non ci sono']].map(([value, label]) => <button className={filter === value ? 'selected' : ''} key={value} onClick={() => setFilter(value)}>{label}<span>{data.profiles.filter(p => value === 'all' || p.attendance === value).length}</span></button>)}</div><div className="people-grid">{data.profiles.filter(p => filter === 'all' || p.attendance === filter).map(p => <article className="person" key={p.id}><span className="person-avatar">{initials(p.name)}</span><div><h3>{p.name}{p.id === userId && <small>tu</small>}</h3><span className={`attendance-badge ${p.attendance}`}>{statuses[p.attendance]}</span>{p.guests > 0 && <p>+{p.guests} accompagnator{p.guests === 1 ? 'e' : 'i'}{p.attendance !== 'yes' && ' (non confermati)'}</p>}{p.note && <p className="person-note">{p.note}</p>}</div>{p.id === userId && <button className="text-link" onClick={() => open('profile')}>Modifica</button>}</article>)}</div>{!data.profiles.filter(p => filter === 'all' || p.attendance === filter).length && <div className="simple-empty"><Users size={32}/><h3>{filter === 'all' ? 'Il gruppo inizia da te.' : 'Nessun partecipante in questa categoria.'}</h3><p>{filter === 'all' ? 'Aggiungi il tuo nome e dai il via alla serata.' : 'Le risposte del gruppo compariranno qui.'}</p></div>}</section>}
+      {(tab === 'places' || tab === 'ideas') && <section className="page-section"><div className="section-heading"><div><div className="eyebrow subdued">{tab === 'places' ? 'SCEGLIAMO INSIEME' : 'SPAZIO ALLA FANTASIA'}</div><h2>{tab === 'places' ? 'Il prossimo ricordo inizia qui.' : 'Le idee belle si condividono.'}</h2><p>{tab === 'places' ? 'Proponi una località e vota i posti che ti piacciono.' : 'Cibo, musica, attività: cosa ti piacerebbe fare?'}</p></div><button className="button dark" onClick={() => open(tab === 'places' ? 'place' : 'idea')}><Plus size={17}/>{tab === 'places' ? 'Proponi una località' : 'Aggiungi un’idea'}</button></div>{sorted.length > 0 && <div className="sort-row"><span>{sorted.length} proposte da esplorare</span><label>Ordina per <select value={sort} onChange={e => setSort(e.target.value)}><option value="recent">Più recenti</option><option value="votes">Più votate</option></select></label></div>}{sorted.length ? <div className="cards wide">{sorted.map(proposalCard)}</div> : emptyState(tab === 'places' ? 'place' : 'idea')}</section>}
+      {tab === 'photos' && <section className="album"><div className="eyebrow subdued">I NOSTRI RICORDI</div><h2>Prima viviamola.<br/><em>Poi riguardiamola.</em></h2><p>L’album della serata avrà il suo spazio qui.<br/>Foto profilo e caricamento delle foto arriveranno più avanti.</p><div className="photo-placeholders" aria-hidden="true"><div><Camera size={33}/><span>31 dicembre</span></div><div><Wine size={33}/><span>noi, a mezzanotte</span></div><div><Sparkles size={33}/><span>ricordi da tenere</span></div></div><span className="pill">CARICAMENTO NON ANCORA ATTIVO</span></section>}
+      </>}
+      <footer><span className="footer-brand"><Sparkles size={16}/>capodanno insieme</span><span>Fatto per esserci. E per ricordarcelo.</span><span>2026 → 2027</span></footer>
+    </main>
+    {notice && <div className="toast" role="status"><Check size={18}/>{notice}</div>}
+    {modal && <Modal title={modal === 'join' ? 'La serata inizia da te.' : modal === 'profile' ? 'La tua presenza' : modal === 'place' ? 'Un posto da condividere.' : 'Metti un’idea sul tavolo.'} close={() => { if (!busy) { setModal(null); setError(''); } }}>
+      {error && <p className="alert" role="alert">{error}</p>}
+      {modal === 'join' && <form onSubmit={submitJoin}><p className="form-intro">Basta il tuo nome per entrare nel gruppo, confermare la presenza e proporre qualcosa.</p><label>Come ti chiami?<input name="name" required minLength={2} maxLength={60} placeholder="Il tuo nome" autoComplete="given-name" autoFocus/></label><div className="identity-note">Il profilo resta collegato a questo browser. Usa lo stesso dispositivo per ritrovare le tue risposte: il solo nome non permette il recupero da altri dispositivi.</div><button className="button coral full" disabled={busy}>{busy ? 'Ingresso in corso…' : 'Entra nel gruppo'}<ArrowRight size={17}/></button></form>}
+      {modal === 'profile' && me && <form onSubmit={submitProfile}><div className="profile-photo"><span className="person-avatar">{initials(me.name)}</span><div><strong>Il tuo spazio</strong><p>Foto profilo: in arrivo</p></div><Camera size={22}/></div><label>Il tuo nome<input name="name" defaultValue={me.name} required minLength={2} maxLength={60}/></label><fieldset><legend>Ci sarai?</legend><div className="attendance-options">{Object.entries(statuses).map(([value, label]) => <label key={value}><input type="radio" name="attendance" value={value} defaultChecked={me.attendance === value}/><span>{label}</span></label>)}</div></fieldset><label>Accompagnatori oltre a te<select name="guests" defaultValue={me.guests}>{Array.from({ length: 11 }, (_, n) => <option key={n} value={n}>{n === 0 ? 'Solo io' : `+${n} ${n === 1 ? 'persona' : 'persone'}`}</option>)}</select></label><label>Qualcosa da far sapere al gruppo <small>facoltativo</small><textarea name="note" defaultValue={me.note} maxLength={500} placeholder="Es. arrivo dopo cena, porto il dolce…"/></label><button className="button coral full" disabled={busy}>{busy ? 'Salvataggio…' : 'Salva la mia presenza'}<Check size={17}/></button></form>}
+      {(modal === 'place' || modal === 'idea') && <form onSubmit={submitProposal}><p className="form-intro">{modal === 'place' ? 'Quel posto che sarebbe perfetto per tutti noi.' : 'Non serve un piano completo. Basta una buona idea.'}</p><label>{modal === 'place' ? 'Nome del posto' : 'La tua idea'}<input name="title" required minLength={3} maxLength={100} placeholder={modal === 'place' ? 'Es. Uno chalet tra le montagne' : 'Es. Cena a tema anni ’90'} autoFocus/></label>{modal === 'place' ? <div className="form-row"><label>Località<input name="location" required maxLength={120} placeholder="Es. Asiago, Veneto"/></label><label>Budget a persona (€)<input name="budget" type="number" min="0" max="100000" step="0.01" placeholder="Facoltativo"/></label></div> : <label>Categoria<select name="category"><option>Cibo & bevande</option><option>Musica</option><option>Attività</option><option>Tema della serata</option><option>Altro</option></select></label>}<label>Raccontaci qualcosa <small>facoltativo</small><textarea name="description" maxLength={1500} placeholder="Cosa rende speciale questa proposta?"/></label><label>Un link per saperne di più <small>facoltativo</small><input name="link" type="url" maxLength={2000} placeholder="https://…"/></label><button className="button coral full" disabled={busy}>{busy ? 'Pubblicazione…' : 'Condividi con il gruppo'}<ArrowUpRight size={17}/></button></form>}
+    </Modal>}
+  </>;
+}
