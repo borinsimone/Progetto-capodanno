@@ -53,7 +53,13 @@ Questo MVP gestisce **un unico evento**, accessibile a chi può aprire la pagina
 
 ## Pubblicazione
 
-Caricare il repository su Vercel, Netlify o altro hosting statico: comando `npm run build`, cartella `dist`. Non è necessario un server Node in produzione. Configurare le variabili prima della build per attivare Supabase. Nessun deploy è incluso automaticamente. I font Google richiedono rete; in assenza di rete restano i font di sistema.
+GitHub Actions pubblica automaticamente ogni push su `main` tramite `.github/workflows/deploy-pages.yml`: installazione con lockfile, test, build e deploy su GitHub Pages. È disponibile anche l'avvio manuale da Actions. In Settings > Pages la sorgente deve essere **GitHub Actions**.
+
+URL: https://borinsimone.github.io/Protratto-capodanno/
+
+Senza variabili viene pubblicata la demo locale. Per attivare Supabase aggiungere `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` in Settings > Secrets and variables > Actions > Variables, poi rieseguire il workflow. Questi sono parametri pubblici del frontend: mai inserire chiavi secret o service_role. La condivisione dei dati si attiva solo dopo la configurazione del database.
+
+È possibile usare anche Vercel, Netlify o altro hosting statico: comando `npm run build`, cartella `dist`. Non è necessario un server Node in produzione. I font Google richiedono rete; in assenza di rete restano i font di sistema.
 
 ## Fuori dal primo rilascio
 
