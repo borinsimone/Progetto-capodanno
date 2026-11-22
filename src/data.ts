@@ -1,56 +1,149 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Data, Profile, Proposal, Vote } from './types';
+import { createClient } from "@supabase/supabase-js";
+export type Row = {
+  id: string;
+  owner: string;
+  kind: string;
+  payload: Record<string, any>;
+  created_at: string;
+};
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-export const cloud = Boolean(url && key);
-export const supabase = cloud ? createClient(url, key) : null;
-const storageKey = 'capodanno-2027-demo-v1';
-const identityKey = 'capodanno-2027-demo-user';
-const empty = (): Data => ({ profiles: [], proposals: [], votes: [] });
-function local(): Data {
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) return empty();
-  try { const data = JSON.parse(raw); if (!Array.isArray(data.profiles) || !Array.isArray(data.proposals) || !Array.isArray(data.votes)) throw Error(); return data; }
-  catch { throw new Error('I dati demo salvati non sono leggibili. Rimuovi i dati del sito dal browser per ricominciare.'); }
+export const db = url && key ? createClient(url, key) : null;
+const storageKey = "mezzanotte-demo-v2";
+let identityPromise: Promise<string> | null = null;
+export function identity(): Promise<string> {
+  if (!identityPromise)
+    identityPromise = initializeIdentity().catch((error) => {
+      identityPromise = null;
+      throw error;
+    });
+  return identityPromise;
 }
-function persist(data: Data) { localStorage.setItem(storageKey, JSON.stringify(data)); }
-function check(error: { message: string } | null) { if (error) throw new Error(error.message); }
-export async function getIdentity(): Promise<string | null> {
-  if (!supabase) return localStorage.getItem(identityKey);
-  const { data, error } = await supabase.auth.getSession(); check(error); return data.session?.user.id ?? null;
-}
-export async function loadData(): Promise<Data> {
-  if (!supabase) return local();
-  // RLS keeps the event data available only to signed-in participants.
-  if (!await getIdentity()) return empty();
-  const results = await Promise.all([supabase.from('profiles').select('*').order('created_at'), supabase.from('proposals').select('*').order('created_at', { ascending: false }), supabase.from('votes').select('*')]);
-  results.forEach(r => check(r.error));
-  return { profiles: results[0].data as Profile[], proposals: results[1].data as Proposal[], votes: results[2].data as Vote[] };
-}
-export async function join(name: string): Promise<string> {
-  let id = await getIdentity();
-  if (supabase && !id) { const { data, error } = await supabase.auth.signInAnonymously(); check(error); id = data.user!.id; }
-  if (!id) id = crypto.randomUUID();
-  const profile: Profile = { id, name, attendance: 'maybe', guests: 0, note: '', avatar_path: null, created_at: new Date().toISOString() };
-  if (supabase) {
-    const { data, error } = await supabase.from('profiles').select('id').eq('id', id).maybeSingle(); check(error);
-    if (!data) { const result = await supabase.from('profiles').insert(profile); check(result.error); }
-  } else { const data = local(); if (!data.profiles.some(p => p.id === id)) { data.profiles.push(profile); persist(data); } localStorage.setItem(identityKey, id); }
+async function initializeIdentity() {
+  if (db) {
+    const { data, error } = await db.auth.getSession();
+    if (error) throw error;
+    if (data.session) return data.session.user.id;
+    const result = await db.auth.signInAnonymously();
+    if (result.error) throw result.error;
+    return result.data.user!.id;
+  }
+  let id = localStorage.getItem(storageKey + "-user");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(storageKey + "-user", id);
+  }
   return id;
 }
-export async function saveProfile(profile: Profile) {
-  if (supabase) { const { error } = await supabase.from('profiles').update({ name: profile.name, attendance: profile.attendance, guests: profile.guests, note: profile.note }).eq('id', profile.id); check(error); }
-  else { const data = local(); data.profiles = data.profiles.map(p => p.id === profile.id ? profile : p); persist(data); }
+export async function readRows(): Promise<Row[]> {
+  if (!db) return JSON.parse(localStorage.getItem(storageKey) || "[]");
+  const { data, error } = await db
+    .from("party_records")
+    .select("*")
+    .order("created_at");
+  if (error) throw error;
+  return data || [];
 }
-export async function addProposal(proposal: Proposal) {
-  if (supabase) { const { error } = await supabase.from('proposals').insert(proposal); check(error); }
-  else { const data = local(); data.proposals.unshift(proposal); persist(data); }
+export async function saveRow(row: Row) {
+  if (!db) {
+    const rows = await readRows();
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify([...rows.filter((r) => r.id !== row.id), row])
+    );
+    return;
+  }
+  const existing = await db
+    .from("party_records")
+    .select("created_at")
+    .eq("id", row.id)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  const { error } = await db.from("party_records").upsert({
+    ...row,
+    created_at: existing.data?.created_at || row.created_at,
+  });
+  if (error) throw error;
 }
-export async function removeProposal(id: string) {
-  if (supabase) { const { error } = await supabase.from('proposals').delete().eq('id', id); check(error); }
-  else { const data = local(); data.proposals = data.proposals.filter(p => p.id !== id); data.votes = data.votes.filter(v => v.proposal_id !== id); persist(data); }
+export async function deleteRow(id: string) {
+  if (!db) {
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(
+        (await readRows()).filter(
+          (r) =>
+            r.id !== id &&
+            !(["vote", "decision"].includes(r.kind) && r.payload.place === id)
+        )
+      )
+    );
+    return;
+  }
+  const { error } = await db.from("party_records").delete().eq("id", id);
+  if (error) throw error;
 }
-export async function toggleVote(userId: string, proposalId: string, voted: boolean) {
-  if (supabase) { const result = voted ? await supabase.from('votes').delete().eq('user_id', userId).eq('proposal_id', proposalId) : await supabase.from('votes').insert({ user_id: userId, proposal_id: proposalId }); check(result.error); }
-  else { const data = local(); data.votes = data.votes.filter(v => !(v.user_id === userId && v.proposal_id === proposalId)); if (!voted) data.votes.push({ user_id: userId, proposal_id: proposalId }); persist(data); }
+export async function membership() {
+  if (!db) return { joined: true, admin: true };
+  const { data, error } = await db.rpc("party_membership");
+  if (error) throw error;
+  return data as { joined: boolean; admin: boolean };
+}
+export async function join(code: string) {
+  if (!db) return;
+  const { error } = await db.rpc("join_party", { invite: code });
+  if (error) throw error;
+}
+export async function upload(file: File, owner: string) {
+  if (!db)
+    throw new Error(
+      "I caricamenti sono disponibili dopo aver collegato Supabase."
+    );
+  let body: Blob = file;
+  if (
+    ["image/jpeg", "image/png", "image/webp"].includes(file.type) &&
+    file.size <= 20 * 1024 * 1024
+  ) {
+    const bitmap = await createImageBitmap(file);
+    try {
+      const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Impossibile preparare la foto.");
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      body = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (blob) =>
+            blob
+              ? resolve(blob)
+              : reject(new Error("Impossibile comprimere la foto.")),
+          "image/webp",
+          0.82
+        )
+      );
+    } finally {
+      bitmap.close();
+    }
+  }
+  const max = file.type.startsWith("video/") ? 20 : 5;
+  if (
+    !(file.type.startsWith("image/") || file.type.startsWith("video/")) ||
+    body.size > max * 1024 * 1024
+  )
+    throw new Error(`Formato non supportato o file oltre ${max} MB.`);
+  const path = `${owner}/${crypto.randomUUID()}`;
+  const { error } = await db.storage
+    .from("party-media")
+    .upload(path, body, { contentType: body.type });
+  if (error) throw error;
+  return path;
+}
+export async function mediaUrl(path: string) {
+  if (!db) return "";
+  const { data, error } = await db.storage
+    .from("party-media")
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+  return data.signedUrl;
 }

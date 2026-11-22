@@ -1,66 +1,42 @@
-# Capodanno insieme · 2027
+# Mezzanotte · Capodanno 2027
 
-Web app React + TypeScript + Vite per organizzare il Capodanno del 31 dicembre 2026. Responsive, in italiano, pronta per Supabase.
-
-## Funzioni
-
-- Ingresso con il nome, identità anonima Supabase persistente nel browser.
-- Presenza sì / forse / no, fino a 10 accompagnatori, note e modifica del proprio nome.
-- Proposte di località con descrizione, budget indicativo e link.
-- Bacheca idee per categoria; voti rimovibili, un voto per persona e proposta.
-- Eliminazione delle proprie proposte, con conferma e cancellazione dei voti collegati.
-- Filtri presenze e ordinamento proposte per data o voti.
-- Dashboard con conteggio delle persone confermate, accompagnatori inclusi, e countdown.
-- Album e foto profilo predisposti: iniziali, sezione dedicata, tabella e bucket privato. Caricamento intenzionalmente rinviato.
+Webapp mobile per il 31 dicembre 2026: React 19, TypeScript, Vite e Supabase. Quattro sezioni: Home, Organizza, Spese, Ricordi. Navigazione fissa; il contenuto scorre solo quando serve. Moduli a schermo intero su telefono, focus confinato e ritorno al controllo precedente.
 
 ## Avvio
 
-Richiede Node.js 22 o successivo.
+Node 22+: `npm ci`, poi `npm run dev`. Verifiche: `npm test` e `npm run build`.
 
-```sh
-npm install
-npm run dev
-```
+Senza variabili ambiente parte una **demo locale**, inizialmente vuota. I dati restano in localStorage in questo browser; foto/video richiedono Supabase. La demo non simula condivisione o un database attivo. Per azzerarla elimina le chiavi `mezzanotte-demo-v2` e `mezzanotte-demo-v2-user` dai dati del sito. I dati demo non vengono importati nel database.
 
-Senza variabili Supabase si avvia la **demo locale**, senza partecipanti inventati. I dati sono salvati in localStorage, non vengono condivisi. Il banner distingue sempre demo e modalità database. Per ripartire nella demo, eliminare le chiavi `capodanno-2027-demo-v1` e `capodanno-2027-demo-user` dai dati del sito.
+## Supabase gratuito
 
-```sh
-npm test
-npm run build
-npm run preview
-```
+1. Crea un **nuovo progetto** Supabase. Lo schema è una nuova implementazione: non riutilizzare lo schema precedente della repository.
+2. In `supabase/schema.sql`, sostituisci `CAMBIA-QUESTO-CODICE-PRIVATO` con un invito lungo e casuale. Esegui lo script nel SQL Editor. Non committare il codice reale. Il database conserva solo l'hash.
+3. Abilita Anonymous Sign-ins in Authentication. Imposta Site URL e Redirect URLs all'URL GitHub Pages e, per lo sviluppo, a `http://localhost:5173`.
+4. Copia `.env.example` in `.env.local` e imposta URL e publishable key. **Mai service_role o secret key nel frontend.**
+5. Entra con l'invito e crea il profilo dell'organizzatore. Recupera il suo UUID in Authentication > Users e promuovilo con la query indicata in fondo allo schema. Nessun partecipante diventa amministratore automaticamente.
+6. In GitHub Settings > Secrets and variables > Actions > Variables imposta `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. Il workflow compila e pubblica su GitHub Pages. Imposta Pages > Source su GitHub Actions se necessario.
 
-## Attivare il database gratuito
+La chiave pubblica nel client è prevista: le policy RLS proteggono dati e file. Tutti i membri invitati possono leggere le informazioni del gruppo, comprese allergie e preferenze. Ogni persona modifica i propri elementi. L'organizzatore sceglie il posto e può confermare i versamenti; il destinatario può confermare quelli ricevuti. Un versamento confermato non può essere modificato o cancellato dall'app.
 
-1. Crea un progetto **Free** su [Supabase](https://supabase.com). Il piano attuale include PostgreSQL, autenticazione anonima e storage; limiti e sospensione per inattività sono descritti nel [listino](https://supabase.com/pricing).
-2. Esegui `supabase/schema.sql` una sola volta nel SQL Editor di un progetto nuovo. Crea tabelle, vincoli, indici, Row Level Security e bucket foto privato.
-3. In Authentication > Sign In / Providers abilita **Anonymous Sign-ins** (la posizione esatta può cambiare nella dashboard).
-4. Copia `.env.example` in `.env.local` e inserisci URL progetto e **publishable key** (o legacy anon key) da Project Settings > API Keys. Non usare mai `service_role` o secret key nel frontend.
-5. Riavvia il server Vite. In produzione imposta le stesse variabili nell'hosting e ricostruisci l'app.
-6. Verifica con due browser separati: ingresso, aggiornamento presenza, proposta e voto. I dati vengono riletti ogni 20 secondi e al ritorno sulla scheda.
+## Identità
 
-Il database non viene creato automaticamente e nessuna credenziale reale è inclusa. I dati demo non sono migrati nel database quando lo si attiva.
+Il primo ingresso crea un utente anonimo Supabase, persistente sul browser. Il codice d'invito è necessario per accedere ai dati. Per recuperare il profilo dopo cambio dispositivo o cancellazione dei dati del browser, **prima** collega e conferma un'email in Impostazioni. Dal nuovo dispositivo usa “Invia link di accesso” con la stessa email. Il solo nome non recupera un profilo. Non esistono link personali che espongano token nella URL condivisa.
 
-## Identità e accesso
+Per uso privato tra amici: non pubblicare il codice invito, abilita le protezioni antiabuso/CAPTCHA e i limiti Auth disponibili nella dashboard Supabase prima di diffondere ampiamente il link. L'accesso email dipende dalle impostazioni SMTP e dai limiti di invio del progetto.
 
-Il solo nome non è una password: viene creato un utente anonimo distinto con sessione persistente. Dopo aver cancellato i dati del browser o cambiato dispositivo non è possibile recuperare quella identità; lo stesso nome può essere usato da più persone. Per recupero e accesso da più dispositivi, aggiungere in seguito email OTP o OAuth e collegare l'identità anonima. Non viene mostrato un logout che farebbe perdere involontariamente il profilo.
+## Funzioni e regole
 
-Questo MVP gestisce **un unico evento**, accessibile a chi può aprire la pagina e registrare un nome. Non è un sistema a inviti: tutti gli utenti autenticati del progetto possono leggere l'evento e inserire proposte; possono modificare soltanto i propri dati e voti tramite RLS. Per un gruppo riservato aggiungere inviti e membership prima di distribuire il link. Valutare CAPTCHA e limiti anti abuso quando si apre l'app a un pubblico ampio; la protezione CAPTCHA richiede anche l'integrazione del token nel form prima di abilitarla.
+- Presenze sì/forse/no, accompagnatori 0–10, allergie e preferenze. Il pernottamento include gli accompagnatori del profilo e conta solo i confermati.
+- Proposte con descrizione, link, costo indicativo, posti letto; un voto rimovibile per persona per posto; scelta definitiva dell'organizzatore. Cancellando una proposta si eliminano voti e scelta collegati.
+- Cibo/bevande/dolci: ciascuno indica cosa porta e ingredienti. Allergie visibili nel riepilogo.
+- Spese: l'autore è chi ha anticipato. Divisione uguale tra i profili selezionati, con distribuzione stabile dei centesimi residui. **Gli accompagnatori non generano quote separate**: il loro referente può tenerne conto nell'importo e nella divisione concordata. Per spese notturne seleziona solo chi dorme.
+- Saldo = anticipi meno quote più versamenti inviati confermati meno versamenti ricevuti confermati. Positivo = da ricevere; negativo = da mettere. Suggerimenti di rimborso derivati dai saldi; non vengono eseguiti pagamenti reali.
+- Album privato: foto fino a 5 MB e video fino a 20 MB per file; link firmati temporanei, niente file multimediali nel database. Formati ammessi nello schema. Le foto JPEG, PNG e WebP fino a 20 MB in ingresso vengono ridimensionate a un massimo di 1920 px e compresse in WebP prima del caricamento (massimo 5 MB in uscita). Le GIF restano originali, fino a 5 MB. Monitora lo spazio in Supabase. La riproduzione dipende dai codec supportati dal browser. Le URL vengono rinnovate con il caricamento periodico dei dati.
+- Aggiornamento dati ogni 20 secondi e al ritorno sulla finestra. Non scrive dati di esempio nel gruppo.
 
-## Foto, fase successiva
+## Verifica manuale prima dell'uso
 
-`profiles.avatar_path`, `photos` e il bucket **privato** `event-photos` sono predisposti. Non esistono policy di upload o pulsanti di caricamento attivi. In seguito: percorsi per utente, policy proprietario, validazione immagini, URL firmati, compressione e galleria. Il nome del file non deve diventare un URL pubblico implicito.
+Con due browser distinti: verifica rifiuto dell'invito errato, isolamento dei profili, voto unico, ripartizione di 1 € in tre quote, versamento non confermabile dal solo mittente, conferma da destinatario, foto leggibile da membri e non da visitatori esterni. Prova collegamento email e recupero da secondo browser. Questi test richiedono un progetto Supabase configurato e non sono sostituiti dai test locali di dominio.
 
-## Pubblicazione
-
-GitHub Actions pubblica automaticamente ogni push su `main` tramite `.github/workflows/deploy-pages.yml`: installazione con lockfile, test, build e deploy su GitHub Pages. È disponibile anche l'avvio manuale da Actions. In Settings > Pages la sorgente deve essere **GitHub Actions**.
-
-URL: https://borinsimone.github.io/Protratto-capodanno/
-
-Senza variabili viene pubblicata la demo locale. Per attivare Supabase aggiungere `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` in Settings > Secrets and variables > Actions > Variables, poi rieseguire il workflow. Questi sono parametri pubblici del frontend: mai inserire chiavi secret o service_role. La condivisione dei dati si attiva solo dopo la configurazione del database.
-
-È possibile usare anche Vercel, Netlify o altro hosting statico: comando `npm run build`, cartella `dist`. Non è necessario un server Node in produzione. I font Google richiedono rete; in assenza di rete restano i font di sistema.
-
-## Fuori dal primo rilascio
-
-Album attivo, recupero identità, inviti, chat, pagamenti/raccolta quote, amministrazione, gestione di più eventi e decisione automatica della località vincente.
+Il piano Free ha limiti di database, storage, traffico e possibile pausa per inattività: controlla il [listino Supabase](https://supabase.com/pricing). Nessuna credenziale Supabase è inclusa. Pagamenti, chat e quote personalizzate per accompagnatore restano fuori da questa versione.

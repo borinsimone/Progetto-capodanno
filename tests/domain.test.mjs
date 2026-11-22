@@ -1,13 +1,33 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { safeLink, attendanceTotal } from '../src/validation.mjs';
-test('confirmed attendance includes guests only for confirmed profiles', () => {
-  assert.equal(attendanceTotal([{attendance:'yes',guests:2},{attendance:'maybe',guests:5},{attendance:'no',guests:2},{attendance:'yes',guests:0}]),4);
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { splitCents, balances, settlements } from "../src/domain.mjs";
+test("divisione esatta dei centesimi, stabile e senza duplicati", () => {
+  assert.deepEqual(splitCents(100, ["b", "a", "c", "a"]), {
+    a: 34,
+    b: 33,
+    c: 33,
+  });
+  assert.throws(() => splitCents(100, []));
+  assert.throws(() => splitCents(-1, ["a"]));
 });
-test('links exclude executable protocols and malformed URLs', () => {
-  assert.equal(safeLink('javascript:alert(1)'),null);
-  assert.equal(safeLink('data:text/html,test'),null);
-  assert.equal(safeLink('www.example.com'),null);
-  assert.equal(safeLink('https://example.com/chalet'),'https://example.com/chalet');
-  assert.equal(safeLink(''),'');
+test("anticipi, quote e versamenti confermati mantengono il totale a zero", () => {
+  const profiles = [{ owner: "a" }, { owner: "b" }, { owner: "c" }];
+  const expenses = [
+    { owner: "a", payload: { cents: 100, people: ["a", "b", "c"] } },
+    { owner: "b", payload: { cents: 200, people: ["b", "c"] } },
+  ];
+  const transfers = [
+    { payload: { from: "c", to: "a", cents: 33, confirmed: true } },
+    { payload: { from: "b", to: "a", cents: 33, confirmed: false } },
+  ];
+  const result = balances(profiles, expenses, transfers);
+  assert.deepEqual(result, { a: 33, b: 67, c: -100 });
+  assert.equal(
+    Object.values(result).reduce((a, b) => a + b, 0),
+    0
+  );
+  assert.deepEqual(settlements(result), [
+    { from: "c", to: "a", cents: 33 },
+    { from: "c", to: "b", cents: 67 },
+  ]);
 });

@@ -1,64 +1,93 @@
--- Run once in the SQL Editor of a new Supabase project.
--- Enable Authentication > Sign In / Providers > Anonymous Sign-ins.
-begin;
-create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  name text not null check (char_length(trim(name)) between 2 and 60),
-  attendance text not null default 'maybe' check (attendance in ('yes','maybe','no')),
-  guests integer not null default 0 check (guests between 0 and 10),
-  note text not null default '' check (char_length(note) <= 500),
-  avatar_path text default null,
-  created_at timestamptz not null default now()
+-- Mezzanotte: execute in a NEW Supabase project. Does not alter older app tables.
+create table public.party_config (id boolean primary key default true check(id), invite_hash text not null);
+-- Replace this code with a long random value before running. Share privately.
+insert into public.party_config values (true, encode(sha256(convert_to('CAMBIA-QUESTO-CODICE-PRIVATO','UTF8')),'hex'));
+create table public.party_members (user_id uuid primary key references auth.users on delete cascade, admin boolean not null default false);
+alter table public.party_config enable row level security;
+alter table public.party_members enable row level security;
+create function public.is_party_member() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from party_members where user_id=auth.uid()) $$;
+create function public.is_party_admin() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from party_members where user_id=auth.uid() and admin) $$;
+create function public.party_membership() returns jsonb language sql stable security definer set search_path=public as $$ select jsonb_build_object('joined',is_party_member(),'admin',is_party_admin()) $$;
+create function public.join_party(invite text) returns void language plpgsql security definer set search_path=public as $$
+begin
+ if auth.uid() is null then raise exception 'Accesso richiesto'; end if;
+ if not exists(select 1 from party_config where invite_hash=encode(sha256(convert_to(invite,'UTF8')),'hex')) then raise exception 'Codice invito non valido'; end if;
+ insert into party_members(user_id) values(auth.uid()) on conflict do nothing;
+end $$;
+revoke all on function public.join_party(text),public.party_membership(),public.is_party_member(),public.is_party_admin() from public;
+grant execute on function public.join_party(text),public.party_membership(),public.is_party_member(),public.is_party_admin() to authenticated;
+create table public.party_records (
+ id uuid primary key default gen_random_uuid(), owner uuid not null references auth.users on delete cascade,
+ kind text not null check(kind in ('profile','place','vote','decision','food','expense','transfer','media')),
+ payload jsonb not null check(jsonb_typeof(payload)='object' and octet_length(payload::text)<16000),
+ created_at timestamptz not null default now()
 );
-create table public.proposals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  kind text not null check (kind in ('place','idea')),
-  title text not null check (char_length(trim(title)) between 3 and 100),
-  description text not null default '' check (char_length(description) <= 1500),
-  location text not null default '' check (char_length(location) <= 120),
-  budget numeric(10,2) check (budget between 0 and 100000),
-  link text not null default '' check (char_length(link) <= 2000 and (link = '' or link ~* '^https?://')),
-  category text not null default 'Altro' check (category in ('Cibo & bevande','Musica','Attività','Tema della serata','Altro')),
-  created_at timestamptz not null default now(),
-  check (kind <> 'place' or char_length(trim(location)) > 0)
-);
-create table public.votes (
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  proposal_id uuid not null references public.proposals(id) on delete cascade,
-  primary key (user_id, proposal_id)
-);
--- Prepared for the future album; there are deliberately no upload/write policies yet.
-create table public.photos (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  storage_path text not null unique,
-  caption text not null default '' check (char_length(caption) <= 500),
-  created_at timestamptz not null default now()
-);
-create index proposals_user_idx on public.proposals(user_id);
-create index proposals_created_idx on public.proposals(created_at desc);
-create index votes_proposal_idx on public.votes(proposal_id);
-alter table public.profiles enable row level security;
-alter table public.proposals enable row level security;
-alter table public.votes enable row level security;
-alter table public.photos enable row level security;
-revoke all on public.profiles, public.proposals, public.votes, public.photos from anon;
-grant select, insert, update on public.profiles to authenticated;
-grant select, insert, delete on public.proposals, public.votes to authenticated;
-grant select on public.photos to authenticated;
-create policy "Participants see profiles" on public.profiles for select to authenticated using (true);
-create policy "Create own profile" on public.profiles for insert to authenticated with check ((select auth.uid()) = id);
-create policy "Edit own profile" on public.profiles for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
-create policy "Participants see proposals" on public.proposals for select to authenticated using (true);
-create policy "Create own proposal" on public.proposals for insert to authenticated with check ((select auth.uid()) = user_id);
-create policy "Delete own proposal" on public.proposals for delete to authenticated using ((select auth.uid()) = user_id);
-create policy "Participants see votes" on public.votes for select to authenticated using (true);
-create policy "Vote as yourself" on public.votes for insert to authenticated with check ((select auth.uid()) = user_id);
-create policy "Remove own vote" on public.votes for delete to authenticated using ((select auth.uid()) = user_id);
-create policy "Participants see photo metadata" on public.photos for select to authenticated using (true);
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('event-photos', 'event-photos', false, 5242880, array['image/jpeg','image/png','image/webp']);
--- Private bucket reserved only. Add owner-folder upload and signed URL policies
--- when the photo feature is implemented; do not make the bucket public.
-commit;
+create unique index one_profile_per_person on public.party_records(owner) where kind='profile';
+create unique index one_vote_per_place on public.party_records(owner,(payload->>'place')) where kind='vote';
+create unique index one_decision on public.party_records(kind) where kind='decision';
+create index records_kind on public.party_records(kind);
+alter table public.party_records enable row level security;
+grant select, insert, update, delete on public.party_records to authenticated;
+create policy read_group on public.party_records for select to authenticated using(public.is_party_member());
+create policy insert_own on public.party_records for insert to authenticated with check(public.is_party_member() and owner=auth.uid() and (kind<>'decision' or public.is_party_admin()));
+create policy update_own on public.party_records for update to authenticated using(public.is_party_member() and (owner=auth.uid() or (kind='transfer' and (payload->>'to'=auth.uid()::text or public.is_party_admin())) or (kind='decision' and public.is_party_admin()))) with check(public.is_party_member());
+create policy delete_own on public.party_records for delete to authenticated using(public.is_party_member() and owner=auth.uid() and (kind<>'transfer' or not coalesce((payload->>'confirmed')::boolean,false)));
+create function public.validate_party_record() returns trigger language plpgsql set search_path=public as $$
+declare member text; amount numeric;
+begin
+ if TG_OP='UPDATE' then
+  if new.id<>old.id or new.kind<>old.kind or new.created_at<>old.created_at then raise exception 'Identità record immutabile'; end if;
+  if new.owner<>old.owner and not(new.kind='decision' and public.is_party_admin()) then raise exception 'Proprietario immutabile'; end if;
+  if old.kind='transfer' then
+   if old.payload->>'confirmed'='true' then raise exception 'Versamento già confermato'; end if;
+   if (new.payload-'confirmed') is distinct from (old.payload-'confirmed') then raise exception 'Dettagli versamento immutabili'; end if;
+   if new.payload->>'confirmed'='true' and not(old.payload->>'to'=auth.uid()::text or public.is_party_admin()) then raise exception 'Solo destinatario o organizzatore può confermare'; end if;
+  end if;
+ end if;
+ if new.kind='profile' then
+  if jsonb_typeof(new.payload->'name') is distinct from 'string' or jsonb_typeof(new.payload->'sleep') is distinct from 'boolean' or jsonb_typeof(new.payload->'guests') is distinct from 'number' or jsonb_typeof(new.payload->'allergies') is distinct from 'string' or jsonb_typeof(new.payload->'avoid') is distinct from 'string' then raise exception 'Tipi profilo non validi'; end if;
+  if (new.payload->>'guests')::numeric<>trunc((new.payload->>'guests')::numeric) or length(new.payload->>'allergies')>500 or length(new.payload->>'avoid')>500 then raise exception 'Dettagli profilo non validi'; end if;
+  if length(trim(new.payload->>'name')) not between 1 and 60 or new.payload->>'status' not in ('yes','maybe','no') or (new.payload->>'guests')::int not between 0 and 10 then raise exception 'Profilo non valido'; end if;
+  if not(new.payload ?& array['name','status','guests','sleep','allergies','avoid']) then raise exception 'Profilo incompleto'; end if;
+ end if;
+ if new.kind in ('expense','transfer') then
+  if jsonb_typeof(new.payload->'cents') is distinct from 'number' then raise exception 'Importo numerico richiesto'; end if;
+  if not(new.payload ? 'cents') then raise exception 'Importo richiesto'; end if;
+  amount=(new.payload->>'cents')::numeric;
+  if amount<=0 or amount>10000000 or amount<>trunc(amount) then raise exception 'Importo non valido'; end if;
+ end if;
+ if new.kind='expense' then
+  if jsonb_typeof(new.payload->'people') is distinct from 'array' then raise exception 'Quote richieste'; end if;
+  if jsonb_array_length(new.payload->'people')=0 then raise exception 'Seleziona partecipanti'; end if;
+  for member in select jsonb_array_elements_text(new.payload->'people') loop
+   if not exists(select 1 from party_records where kind='profile' and owner::text=member) then raise exception 'Partecipante non valido'; end if;
+  end loop;
+ end if;
+ if new.kind='transfer' then
+  if new.payload->>'from' is distinct from new.owner::text or new.payload->>'to'=new.owner::text or not exists(select 1 from party_records where kind='profile' and owner::text=new.payload->>'to') then raise exception 'Versamento non valido'; end if;
+  if TG_OP='INSERT' and new.payload->>'confirmed' is distinct from 'false' then raise exception 'Serve conferma separata'; end if;
+ end if;
+ if new.kind in ('place','food','expense') and coalesce(length(trim(new.payload->>'title')),0) not between 1 and 100 then raise exception 'Titolo richiesto'; end if;
+ if new.kind in ('place','food','expense') and jsonb_typeof(new.payload->'title') is distinct from 'string' then raise exception 'Titolo non valido'; end if;
+ if new.kind='place' then
+  if jsonb_typeof(new.payload->'description') is distinct from 'string' or jsonb_typeof(new.payload->'link') is distinct from 'string' or jsonb_typeof(new.payload->'cost') is distinct from 'number' or jsonb_typeof(new.payload->'beds') is distinct from 'number' then raise exception 'Dettagli posto non validi'; end if;
+  if (new.payload->>'cost')::numeric<0 or (new.payload->>'cost')::numeric>10000000 or (new.payload->>'beds')::numeric not between 0 and 1000 or (new.payload->>'beds')::numeric<>trunc((new.payload->>'beds')::numeric) then raise exception 'Costo o posti letto non validi'; end if;
+ end if;
+ if new.kind='food' and (jsonb_typeof(new.payload->'notes') is distinct from 'string' or new.payload->>'category' not in ('Cibo','Bevande','Dolci','Altro') or not(new.payload ? 'category')) then raise exception 'Dettagli cibo non validi'; end if;
+ if new.kind='place' and coalesce(new.payload->>'link','')<>'' and new.payload->>'link' !~* '^https?://' then raise exception 'Link non valido'; end if;
+ if new.kind in ('vote','decision') and not exists(select 1 from party_records where kind='place' and id::text=new.payload->>'place') then raise exception 'Proposta non valida'; end if;
+ if new.kind='media' and (new.payload->>'path' not like new.owner::text||'/%' or not(new.payload ?& array['path','type'])) then raise exception 'Percorso non valido'; end if;
+ if new.kind='media' and (jsonb_typeof(new.payload->'caption') is distinct from 'string' or new.payload->>'type' not in ('image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime')) then raise exception 'Media non valido'; end if;
+ return new;
+end $$;
+create trigger validate_record before insert or update on public.party_records for each row execute function public.validate_party_record();
+create function public.cleanup_place() returns trigger language plpgsql security definer set search_path=public as $$ begin
+ if old.kind='place' then delete from party_records where kind in ('vote','decision') and payload->>'place'=old.id::text; end if; return old;
+end $$;
+create trigger cleanup_place after delete on public.party_records for each row execute function public.cleanup_place();
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values ('party-media','party-media',false,20971520,array['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime']);
+create policy media_read on storage.objects for select to authenticated using(bucket_id='party-media' and public.is_party_member());
+create policy media_upload on storage.objects for insert to authenticated with check(bucket_id='party-media' and public.is_party_member() and (storage.foldername(name))[1]=auth.uid()::text);
+create policy media_delete on storage.objects for delete to authenticated using(bucket_id='party-media' and public.is_party_member() and (storage.foldername(name))[1]=auth.uid()::text);
+-- After the organizer joins, promote their UUID in SQL Editor:
+-- update public.party_members set admin=true where user_id='UUID-ORGANIZZATORE';
