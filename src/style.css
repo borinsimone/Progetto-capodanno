@@ -1449,6 +1449,7 @@ fieldset .form-note {
   }
 }
 @media (max-width: 700px) {
+  .home-page { padding-bottom: 20px; }
   .home-page .hero {
     padding: 17px 20px 14px;
   }
