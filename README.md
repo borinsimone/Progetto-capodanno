@@ -13,9 +13,13 @@ Senza variabili ambiente parte una **demo locale**, inizialmente vuota. I dati r
 1. Crea un **nuovo progetto** Supabase. Lo schema è una nuova implementazione: non riutilizzare lo schema precedente della repository.
 2. In `supabase/schema.sql`, sostituisci `CAMBIA-QUESTO-CODICE-PRIVATO` con un invito lungo e casuale. Esegui lo script nel SQL Editor. Non committare il codice reale. Il database conserva solo l'hash.
 3. Abilita Anonymous Sign-ins in Authentication. Imposta Site URL e Redirect URLs all'URL GitHub Pages e, per lo sviluppo, a `http://localhost:5173`.
-4. Copia `.env.example` in `.env.local` e imposta URL e publishable key. **Mai service_role o secret key nel frontend.**
+4. Copia `.env.example` in `.env` e imposta URL e publishable key. `.env` e tutte le varianti `.env.*` sono escluse da Git; il solo `.env.example` viene versionato, con valori vuoti. **Mai service_role o secret key nel frontend.** I valori `VITE_` vengono incorporati nel JavaScript del browser: la publishable key è pubblica per definizione; i segreti amministrativi e il codice d'invito non devono avere quel prefisso.
 5. Entra con l'invito e crea il profilo dell'organizzatore. Recupera il suo UUID in Authentication > Users e promuovilo con la query indicata in fondo allo schema. Nessun partecipante diventa amministratore automaticamente.
-6. In GitHub Settings > Secrets and variables > Actions > Variables imposta `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. Il workflow compila e pubblica su GitHub Pages. Imposta Pages > Source su GitHub Actions se necessario.
+6. In GitHub Settings > Secrets and variables > Actions > Secrets imposta `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. Il workflow legge questi valori dai GitHub Secrets, senza committare il file `.env`. Non aggiungere codice d'invito o chiavi amministrative al workflow di build. Il workflow compila e pubblica su GitHub Pages. Imposta Pages > Source su GitHub Actions se necessario.
+
+### Vincolo di costo
+
+Usare esclusivamente un progetto in un'organizzazione con piano **Free**. Prima di creare o collegare il progetto, verificare il piano effettivo nell'account: il nome del progetto non garantisce che sia gratuito. Non attivare upgrade, add-on o branch a pagamento. Database e storage devono restare entro i limiti Free; se lo spazio per i media finisce, fermare i caricamenti anziché attivare un piano a pagamento. La configurazione locale non crea risorse Supabase e non modifica il piano dell'account.
 
 La chiave pubblica nel client è prevista: le policy RLS proteggono dati e file. Tutti i membri invitati possono leggere le informazioni del gruppo, comprese allergie e preferenze. Ogni persona modifica i propri elementi. L'organizzatore sceglie il posto e può confermare i versamenti; il destinatario può confermare quelli ricevuti. Un versamento confermato non può essere modificato o cancellato dall'app.
 
