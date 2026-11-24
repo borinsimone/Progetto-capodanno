@@ -1,0 +1,24 @@
+project_id = "progetto-capodanno"
+
+# Only explicitly declared settings are pushed. No billing or infrastructure changes.
+[auth]
+site_url = "https://borinsimone.github.io/Progetto-capodanno/"
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173", "http://127.0.0.1:4174"]
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+max_frequency = "1m"
+otp_length = 6
+otp_expiry = 600
+
+[auth.hook.send_email]
+enabled = true
+uri = "https://kiilbuvzpasohmnmsdzh.supabase.co/functions/v1/send-auth-email"
+secrets = "env(SEND_EMAIL_HOOK_SECRET)"
+
+[functions.send-auth-email]
+# Authenticated by the Supabase webhook signature inside the function.
+verify_jwt = false

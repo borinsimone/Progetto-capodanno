@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { Webhook } from "standardwebhooks";
-import { createEmailHook } from "../supabase/functions/send-auth-email/handler.mjs";
+import {
+  createEmailHook,
+  deliveryErrorCode,
+} from "../supabase/functions/send-auth-email/handler.mjs";
 
 test("EmailJS riceve solo OTP firmati da Supabase; firme errate, alterazioni e richieste scadute non inviano email", async () => {
   const secret = randomBytes(32).toString("base64");
@@ -81,6 +84,7 @@ test("EmailJS riceve solo OTP firmati da Supabase; firme errate, alterazioni e r
   assert.equal(deliveries.length, 1);
 });
 test("provider non configurato e risposte di errore non espongono OTP o credenziali", async () => {
+  const diagnostics = [];
   const missing = createEmailHook({
     config: {},
     verify: () => {
@@ -96,6 +100,7 @@ test("provider non configurato e risposte di errore non espongono OTP o credenzi
     503
   );
   const handler = createEmailHook({
+    report: (event) => diagnostics.push(event),
     config: {
       hookSecret: "configured",
       serviceId: "service",
@@ -117,5 +122,22 @@ test("provider non configurato e risposte di errore non espongono OTP o credenzi
   assert.doesNotMatch(
     await response.text(),
     /secret-value|123456|member@example/
+  );
+  assert.deepEqual(diagnostics, [
+    { status: 403, code: "EMAILJS_DELIVERY_FAILED" },
+  ]);
+  assert.equal(
+    deliveryErrorCode(
+      404,
+      "No records found. Public key: private-secret email: user@example.com code: 123456"
+    ),
+    "EMAILJS_CONFIGURATION_NOT_FOUND"
+  );
+  assert.equal(
+    deliveryErrorCode(
+      403,
+      "API calls are disabled for non-browser applications"
+    ),
+    "EMAILJS_NON_BROWSER_DISABLED"
   );
 });

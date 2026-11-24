@@ -15,6 +15,8 @@ const webhook = secret ? new Webhook(secret) : null;
 Deno.serve(
   createEmailHook({
     config,
+    report: (event: { status: number; code: string }) =>
+      console.warn("Email delivery diagnostic", event),
     verify: (body: string, headers: Record<string, string>) => {
       if (!webhook) throw new Error("Hook unavailable");
       return webhook.verify(body, headers);

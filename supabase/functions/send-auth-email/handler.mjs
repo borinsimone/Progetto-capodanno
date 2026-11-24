@@ -1,4 +1,24 @@
-export function createEmailHook({ verify, config, fetcher = fetch }) {
+export function deliveryErrorCode(status, message) {
+  if (/no records found/i.test(message))
+    return "EMAILJS_CONFIGURATION_NOT_FOUND";
+  if (/non.browser|browser.only/i.test(message))
+    return "EMAILJS_NON_BROWSER_DISABLED";
+  if (/private.key|access.token/i.test(message))
+    return "EMAILJS_PRIVATE_KEY_REQUIRED";
+  if (/quota|limit.*reach|rate.limit/i.test(message))
+    return "EMAILJS_LIMIT_REACHED";
+  if (/public.key|user.id/i.test(message)) return "EMAILJS_PUBLIC_KEY_INVALID";
+  if (/template/i.test(message)) return "EMAILJS_TEMPLATE_ERROR";
+  if (/service|gmail|authentication|credential|permission|scope/i.test(message))
+    return "EMAILJS_SERVICE_ERROR";
+  return status === 429 ? "EMAILJS_LIMIT_REACHED" : "EMAILJS_DELIVERY_FAILED";
+}
+export function createEmailHook({
+  verify,
+  config,
+  fetcher = fetch,
+  report = () => {},
+}) {
   return async (request) => {
     const reply = (status, message) =>
       Response.json(message ? { error: { http_code: status, message } } : {}, {
@@ -55,10 +75,15 @@ export function createEmailHook({ verify, config, fetcher = fetch }) {
           signal: AbortSignal.timeout(4000),
         }
       );
-      // Provider responses may contain personal information: do not return or log their body.
-      if (!response.ok) return reply(502, "Email delivery failed");
+      // Only a fixed diagnostic code is logged. Never log or return the provider's raw response.
+      if (!response.ok) {
+        const code = deliveryErrorCode(response.status, await response.text());
+        report({ status: response.status, code });
+        return reply(502, "Email delivery failed");
+      }
       return reply(200);
     } catch {
+      report({ status: 0, code: "EMAILJS_NETWORK_ERROR" });
       return reply(502, "Email delivery failed");
     }
   };
