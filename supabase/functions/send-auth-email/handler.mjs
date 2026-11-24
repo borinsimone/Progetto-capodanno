@@ -1,4 +1,6 @@
 export function deliveryErrorCode(status, message) {
+  if (/recipient.*empty|address.*empty|recipient.*required/i.test(message))
+    return "EMAILJS_RECIPIENT_MISSING";
   if (/no records found/i.test(message))
     return "EMAILJS_CONFIGURATION_NOT_FOUND";
   if (/non.browser|browser.only/i.test(message))
@@ -11,7 +13,11 @@ export function deliveryErrorCode(status, message) {
   if (/template/i.test(message)) return "EMAILJS_TEMPLATE_ERROR";
   if (/service|gmail|authentication|credential|permission|scope/i.test(message))
     return "EMAILJS_SERVICE_ERROR";
-  return status === 429 ? "EMAILJS_LIMIT_REACHED" : "EMAILJS_DELIVERY_FAILED";
+  return status === 429
+    ? "EMAILJS_LIMIT_REACHED"
+    : status === 422
+    ? "EMAILJS_PARAMETERS_INVALID"
+    : "EMAILJS_DELIVERY_FAILED";
 }
 export function createEmailHook({
   verify,
@@ -60,6 +66,7 @@ export function createEmailHook({
       user_id: config.publicKey,
       template_params: {
         to_email: user.email,
+        email: user.email,
         otp_code: email.token,
         app_name: "Mezzanotte",
       },

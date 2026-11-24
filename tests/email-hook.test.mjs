@@ -47,6 +47,7 @@ test("EmailJS riceve solo OTP firmati da Supabase; firme errate, alterazioni e r
   assert.equal(deliveries.length, 1);
   assert.deepEqual(deliveries[0].body.template_params, {
     to_email: "member@example.com",
+    email: "member@example.com",
     otp_code: "123456",
     app_name: "Mezzanotte",
   });
