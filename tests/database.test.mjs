@@ -8,7 +8,7 @@ test("PostgreSQL: invito, isolamento, conferma versamenti e storage privato", as
   try {
     // Local facsimile of Supabase-managed schemas; tests our SQL and RLS, not the live Auth/Storage APIs.
     await pg.exec(`
-      create role authenticated;
+      create role authenticated; create role anon;
       create schema auth;
       create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
@@ -175,7 +175,10 @@ test("PostgreSQL: invito, isolamento, conferma versamenti e storage privato", as
         )
       );
     });
-    await pg.query("update party_members set admin=true where user_id=$1", [a]);
+    await pg.query(
+      "update private.party_members set admin=true where user_id=$1",
+      [a]
+    );
     await as(a, async () => {
       await pg.query(
         `insert into party_records(owner,kind,payload) values($1,'decision',$2)`,

@@ -865,6 +865,19 @@ main {
 .recovery p {
   margin-top: 15px;
 }
+.login-options {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 24px;
+}
+.login-options button {
+  width: auto;
+  font-size: 13px;
+}
+.entry-copy > .form-note {
+  font-size: 13px;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1449,7 +1462,9 @@ fieldset .form-note {
   }
 }
 @media (max-width: 700px) {
-  .home-page { padding-bottom: 20px; }
+  .home-page {
+    padding-bottom: 20px;
+  }
   .home-page .hero {
     padding: 17px 20px 14px;
   }

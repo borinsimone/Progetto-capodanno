@@ -1,20 +1,29 @@
--- Mezzanotte: execute in a NEW Supabase project. Does not alter older app tables.
-create table public.party_config (id boolean primary key default true check(id), invite_hash text not null);
+-- Mezzanotte: execute in a NEW Supabase project. Internal tables/functions are not exposed through the Data API.
+create schema if not exists private;
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated;
+create table private.party_config (id boolean primary key default true check(id), invite_hash text not null);
 -- Replace this code with a long random value before running. Share privately.
-insert into public.party_config values (true, encode(sha256(convert_to('CAMBIA-QUESTO-CODICE-PRIVATO','UTF8')),'hex'));
-create table public.party_members (user_id uuid primary key references auth.users on delete cascade, admin boolean not null default false);
-alter table public.party_config enable row level security;
-alter table public.party_members enable row level security;
-create function public.is_party_member() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from party_members where user_id=auth.uid()) $$;
-create function public.is_party_admin() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from party_members where user_id=auth.uid() and admin) $$;
-create function public.party_membership() returns jsonb language sql stable security definer set search_path=public as $$ select jsonb_build_object('joined',is_party_member(),'admin',is_party_admin()) $$;
-create function public.join_party(invite text) returns void language plpgsql security definer set search_path=public as $$
+insert into private.party_config values (true, encode(sha256(convert_to('CAMBIA-QUESTO-CODICE-PRIVATO','UTF8')),'hex'));
+create table private.party_members (user_id uuid primary key references auth.users on delete cascade, admin boolean not null default false);
+alter table private.party_config enable row level security;
+alter table private.party_members enable row level security;
+revoke all on private.party_config,private.party_members from public,anon,authenticated;
+create function private.is_party_member() returns boolean language sql stable security definer set search_path=private,public as $$ select auth.uid() is not null and exists(select 1 from party_members where user_id=auth.uid()) $$;
+create function public.is_party_member() returns boolean language sql stable security invoker set search_path=public as $$ select private.is_party_member() $$;
+create function private.is_party_admin() returns boolean language sql stable security definer set search_path=private,public as $$ select auth.uid() is not null and exists(select 1 from party_members where user_id=auth.uid() and admin) $$;
+create function public.is_party_admin() returns boolean language sql stable security invoker set search_path=public as $$ select private.is_party_admin() $$;
+create function public.party_membership() returns jsonb language sql stable security invoker set search_path=public as $$ select jsonb_build_object('joined',is_party_member(),'admin',is_party_admin()) $$;
+create function private.join_party(invite text) returns void language plpgsql security definer set search_path=private,public as $$
 begin
  if auth.uid() is null then raise exception 'Accesso richiesto'; end if;
  if not exists(select 1 from party_config where invite_hash=encode(sha256(convert_to(invite,'UTF8')),'hex')) then raise exception 'Codice invito non valido'; end if;
  insert into party_members(user_id) values(auth.uid()) on conflict do nothing;
 end $$;
-revoke all on function public.join_party(text),public.party_membership(),public.is_party_member(),public.is_party_admin() from public;
+create function public.join_party(invite text) returns void language sql security invoker set search_path=public as $$ select private.join_party(invite) $$;
+revoke all on function private.join_party(text),private.is_party_member(),private.is_party_admin() from public,anon;
+grant execute on function private.join_party(text),private.is_party_member(),private.is_party_admin() to authenticated;
+revoke all on function public.join_party(text),public.party_membership(),public.is_party_member(),public.is_party_admin() from public,anon;
 grant execute on function public.join_party(text),public.party_membership(),public.is_party_member(),public.is_party_admin() to authenticated;
 create table public.party_records (
  id uuid primary key default gen_random_uuid(), owner uuid not null references auth.users on delete cascade,
@@ -26,13 +35,15 @@ create unique index one_profile_per_person on public.party_records(owner) where 
 create unique index one_vote_per_place on public.party_records(owner,(payload->>'place')) where kind='vote';
 create unique index one_decision on public.party_records(kind) where kind='decision';
 create index records_kind on public.party_records(kind);
+create index records_owner on public.party_records(owner);
 alter table public.party_records enable row level security;
+revoke all on public.party_records from public,anon;
 grant select, insert, update, delete on public.party_records to authenticated;
 create policy read_group on public.party_records for select to authenticated using(public.is_party_member());
 create policy insert_own on public.party_records for insert to authenticated with check(public.is_party_member() and owner=auth.uid() and (kind<>'decision' or public.is_party_admin()));
 create policy update_own on public.party_records for update to authenticated using(public.is_party_member() and (owner=auth.uid() or (kind='transfer' and (payload->>'to'=auth.uid()::text or public.is_party_admin())) or (kind='decision' and public.is_party_admin()))) with check(public.is_party_member());
 create policy delete_own on public.party_records for delete to authenticated using(public.is_party_member() and owner=auth.uid() and (kind<>'transfer' or not coalesce((payload->>'confirmed')::boolean,false)));
-create function public.validate_party_record() returns trigger language plpgsql set search_path=public as $$
+create function private.validate_party_record() returns trigger language plpgsql set search_path=public as $$
 declare member text; amount numeric;
 begin
  if TG_OP='UPDATE' then
@@ -80,14 +91,15 @@ begin
  if new.kind='media' and (jsonb_typeof(new.payload->'caption') is distinct from 'string' or new.payload->>'type' not in ('image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime')) then raise exception 'Media non valido'; end if;
  return new;
 end $$;
-create trigger validate_record before insert or update on public.party_records for each row execute function public.validate_party_record();
-create function public.cleanup_place() returns trigger language plpgsql security definer set search_path=public as $$ begin
+create trigger validate_record before insert or update on public.party_records for each row execute function private.validate_party_record();
+create function private.cleanup_place() returns trigger language plpgsql security definer set search_path=public as $$ begin
  if old.kind='place' then delete from party_records where kind in ('vote','decision') and payload->>'place'=old.id::text; end if; return old;
 end $$;
-create trigger cleanup_place after delete on public.party_records for each row execute function public.cleanup_place();
+create trigger cleanup_place after delete on public.party_records for each row execute function private.cleanup_place();
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values ('party-media','party-media',false,20971520,array['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime']);
 create policy media_read on storage.objects for select to authenticated using(bucket_id='party-media' and public.is_party_member());
 create policy media_upload on storage.objects for insert to authenticated with check(bucket_id='party-media' and public.is_party_member() and (storage.foldername(name))[1]=auth.uid()::text);
 create policy media_delete on storage.objects for delete to authenticated using(bucket_id='party-media' and public.is_party_member() and (storage.foldername(name))[1]=auth.uid()::text);
+revoke all on function private.validate_party_record(),private.cleanup_place() from public,anon,authenticated;
 -- After the organizer joins, promote their UUID in SQL Editor:
--- update public.party_members set admin=true where user_id='UUID-ORGANIZZATORE';
+-- update private.party_members set admin=true where user_id='UUID-ORGANIZZATORE';

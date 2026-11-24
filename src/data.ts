@@ -10,23 +10,14 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const db = url && key ? createClient(url, key) : null;
 const storageKey = "mezzanotte-demo-v2";
-let identityPromise: Promise<string> | null = null;
-export function identity(): Promise<string> {
-  if (!identityPromise)
-    identityPromise = initializeIdentity().catch((error) => {
-      identityPromise = null;
-      throw error;
-    });
-  return identityPromise;
-}
-async function initializeIdentity() {
+export async function identity(): Promise<string | null> {
   if (db) {
     const { data, error } = await db.auth.getSession();
     if (error) throw error;
-    if (data.session) return data.session.user.id;
-    const result = await db.auth.signInAnonymously();
-    if (result.error) throw result.error;
-    return result.data.user!.id;
+    if (data.session && !data.session.user.is_anonymous)
+      return data.session.user.id;
+    if (data.session?.user.is_anonymous) await db.auth.signOut();
+    return null;
   }
   let id = localStorage.getItem(storageKey + "-user");
   if (!id) {

@@ -31,6 +31,7 @@ import {
   type Row,
 } from "./data";
 import { balances, settlements } from "./domain.mjs";
+import Login from "./Login";
 const euro = (c: number) =>
   (c / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 const makeRow = (
@@ -87,23 +88,44 @@ export default function App() {
   }
   useEffect(() => {
     let active = true;
-    (async () => {
+    let revision = 0;
+    const load = async () => {
+      const current = ++revision;
       try {
         const id = await identity();
-        const m = await membership();
-        if (!active) return;
-        setUser(id);
+        const m = id ? await membership() : { joined: false, admin: false };
+        const data = m.joined ? await readRows() : [];
+        if (!active || current !== revision) return;
+        setUser(id || "");
         setJoined(m.joined);
         setAdmin(m.admin);
-        if (m.joined) await refresh();
+        setRows(data);
       } catch (e) {
         if (active) setError(message(e));
       } finally {
         if (active) setReady(true);
       }
-    })();
+    };
+    void load();
+    const subscription = db?.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        revision++;
+        setUser("");
+        setJoined(false);
+        setAdmin(false);
+        setRows([]);
+        setModal(null);
+        setNotice("");
+        setError("");
+      } else if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        setTimeout(() => {
+          if (active) void load();
+        }, 0);
+      }
+    });
     return () => {
       active = false;
+      subscription?.data.subscription.unsubscribe();
     };
   }, []);
   useEffect(() => {
@@ -267,6 +289,7 @@ export default function App() {
         <p>Prepariamo la serata…</p>
       </div>
     );
+  if (!user && db) return <Login initialError={error} />;
   if (!user)
     return (
       <div className="splash">
@@ -317,7 +340,6 @@ export default function App() {
             </Field>
             <button disabled={busy}>Entra nel gruppo</button>
           </form>
-          <Recovery />
           {error && (
             <p role="alert" className="error">
               {error}
@@ -339,8 +361,8 @@ export default function App() {
             da te.
           </h1>
           <p>
-            Come ti chiami? Il tuo profilo resterà salvato su questo
-            dispositivo.
+            Come ti chiami? Il tuo profilo sarà associato al tuo accesso. La
+            presenza si conferma separatamente.
           </p>
           {!db && (
             <p className="demo-inline">
@@ -381,7 +403,6 @@ export default function App() {
               Ci sono anch’io <Sparkles size={18} />
             </button>
           </form>
-          <Recovery />
           {error && (
             <p className="error" role="alert">
               {error}
@@ -1063,73 +1084,27 @@ export default function App() {
                   : "Sei nella demo locale. I dati non vengono condivisi e i caricamenti sono disabilitati."}
               </p>
               <p>
-                Per recuperare l’accesso da un altro dispositivo, associa un
-                indirizzo email al profilo. Non verrà mostrato agli altri.
+                Accedi da qualsiasi dispositivo con la stessa email e un nuovo
+                codice. La tua email è privata e non compare nelle presenze.
               </p>
-              {db ? (
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const email = String(
-                      new FormData(e.currentTarget).get("email")
-                    ).trim();
-                    await action(async () => {
-                      const { error } = await db!.auth.updateUser(
-                        { email },
-                        { emailRedirectTo: location.origin + location.pathname }
-                      );
-                      if (error) throw error;
-                      setNotice(
-                        "Controlla la tua email e conferma il collegamento al profilo."
-                      );
-                    });
-                  }}
-                >
-                  <Field label="Email di recupero">
-                    <input type="email" name="email" required />
-                  </Field>
-                  <button disabled={busy}>Collega email</button>
-                </form>
-              ) : (
-                <p>
-                  Le istruzioni per attivare Supabase sono nel README della
-                  repository.
-                </p>
-              )}
               {db && (
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const email = String(
-                      new FormData(e.currentTarget).get("email")
-                    );
-                    await action(async () => {
-                      const { error } = await db!.auth.signInWithOtp({
-                        email,
-                        options: {
-                          shouldCreateUser: false,
-                          emailRedirectTo: location.origin + location.pathname,
-                        },
-                      });
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const { error } = await db!.auth.signOut();
                       if (error) throw error;
-                      setNotice(
-                        "Link di accesso inviato. Aprilo per recuperare il profilo associato."
-                      );
-                    });
+                    } catch (e) {
+                      setError(message(e));
+                    } finally {
+                      setBusy(false);
+                    }
                   }}
                 >
-                  <Field label="Hai già collegato un’email?">
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      placeholder="La tua email"
-                    />
-                  </Field>
-                  <button className="secondary" disabled={busy}>
-                    Invia link di accesso
-                  </button>
-                </form>
+                  Esci da questo dispositivo
+                </button>
               )}
               <button
                 className="secondary"
@@ -1409,53 +1384,6 @@ export default function App() {
         </ModalPanel>
       )}
     </div>
-  );
-}
-function Recovery() {
-  const [status, setStatus] = useState("");
-  const [sending, setSending] = useState(false);
-  if (!db) return null;
-  return (
-    <details className="recovery">
-      <summary>Hai già un profilo? Recupera l’accesso</summary>
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setSending(true);
-          setStatus("");
-          const email = String(new FormData(event.currentTarget).get("email"));
-          try {
-            const { error } = await db!.auth.signInWithOtp({
-              email,
-              options: {
-                shouldCreateUser: false,
-                emailRedirectTo: location.origin + location.pathname,
-              },
-            });
-            if (error) throw error;
-            setStatus(
-              "Se l’email è associata al tuo profilo, riceverai un link per entrare."
-            );
-          } catch (error) {
-            setStatus(
-              error instanceof Error
-                ? error.message
-                : "Invio non riuscito. Riprova."
-            );
-          } finally {
-            setSending(false);
-          }
-        }}
-      >
-        <Field label="Email già collegata al profilo">
-          <input type="email" name="email" required autoComplete="email" />
-        </Field>
-        <button className="secondary" disabled={sending}>
-          Invia link di accesso
-        </button>
-        <p role="status">{status}</p>
-      </form>
-    </details>
   );
 }
 function Logo() {
