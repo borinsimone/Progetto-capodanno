@@ -3,7 +3,6 @@ import {
   Home,
   LayoutGrid,
   Wallet,
-  Images,
   Plus,
   X,
   Check,
@@ -15,7 +14,6 @@ import {
   Settings,
   Heart,
   Trash2,
-  Camera,
   Copy,
 } from "lucide-react";
 import {
@@ -26,8 +24,6 @@ import {
   readRows,
   saveRow,
   deleteRow,
-  upload,
-  mediaUrl,
   type Row,
 } from "./data";
 import { balances, settlements } from "./domain.mjs";
@@ -52,7 +48,6 @@ type Modal =
   | "food"
   | "expense"
   | "transfer"
-  | "media"
   | "settings"
   | null;
 export default function App() {
@@ -67,14 +62,12 @@ export default function App() {
     [section, setSection] = useState("people"),
     [modal, setModal] = useState<Modal>(null),
     [notice, setNotice] = useState("");
-  const [urls, setUrls] = useState<Record<string, string>>({});
   const profile = rows.find((r) => r.kind === "profile" && r.owner === user);
   const people = rows.filter((r) => r.kind === "profile"),
     places = rows.filter((r) => r.kind === "place"),
     foods = rows.filter((r) => r.kind === "food"),
     expenses = rows.filter((r) => r.kind === "expense"),
-    transfers = rows.filter((r) => r.kind === "transfer"),
-    media = rows.filter((r) => r.kind === "media");
+    transfers = rows.filter((r) => r.kind === "transfer");
   const confirmed = people.filter((p) => p.payload.status === "yes"),
     sleeping = confirmed.filter((p) => p.payload.sleep);
   const balance = balances(people, expenses, transfers),
@@ -139,19 +132,6 @@ export default function App() {
       window.removeEventListener("focus", update);
     };
   }, [joined]);
-  useEffect(() => {
-    let active = true;
-    Promise.all(
-      media.map(async (m) => [m.id, await mediaUrl(m.payload.path)] as const)
-    )
-      .then((entries) => {
-        if (active) setUrls(Object.fromEntries(entries));
-      })
-      .catch((e) => setError(message(e)));
-    return () => {
-      active = false;
-    };
-  }, [rows]);
   function message(e: unknown) {
     return e instanceof Error
       ? e.message
@@ -175,15 +155,7 @@ export default function App() {
   }
   async function remove(row: Row) {
     if (!confirm("Eliminare questo elemento?")) return;
-    await action(async () => {
-      if (row.kind === "media" && db) {
-        const { error } = await db.storage
-          .from("party-media")
-          .remove([row.payload.path]);
-        if (error) throw error;
-      }
-      await deleteRow(row.id);
-    }, false);
+    await action(() => deleteRow(row.id), false);
   }
   function open(kind: Modal) {
     setError("");
@@ -263,23 +235,6 @@ export default function App() {
             confirmed: false,
           })
         );
-      }
-      if (modal === "media") {
-        const file = f.get("file") as File;
-        if (!file?.size) throw new Error("Scegli un file");
-        const path = await upload(file, user);
-        try {
-          await saveRow(
-            makeRow(user, "media", {
-              path,
-              type: file.type,
-              caption: value("caption"),
-            })
-          );
-        } catch (e) {
-          if (db) await db.storage.from("party-media").remove([path]);
-          throw e;
-        }
       }
     });
   }
@@ -972,57 +927,6 @@ export default function App() {
               </div>
             </>
           )}
-          {tab === "memories" && (
-            <>
-              <PageTitle title="Foto e video" />
-              <SectionTitle
-                title={`${media.length} ricordi condivisi`}
-                action="Carica"
-                onClick={() => open("media")}
-              />
-              {!media.length && (
-                <Empty
-                  icon={<Camera size={32} />}
-                  title="Nessun file caricato"
-                  text="Carica foto e video da condividere con il gruppo."
-                  action="Carica file"
-                  onClick={() => open("media")}
-                />
-              )}
-              <div className="gallery">
-                {media.map((m) => (
-                  <figure key={m.id}>
-                    {urls[m.id] ? (
-                      m.payload.type.startsWith("video/") ? (
-                        <video controls preload="metadata" src={urls[m.id]} />
-                      ) : (
-                        <a href={urls[m.id]} target="_blank" rel="noreferrer">
-                          <img
-                            loading="lazy"
-                            src={urls[m.id]}
-                            alt={
-                              m.payload.caption || `Ricordo di ${name(m.owner)}`
-                            }
-                          />
-                        </a>
-                      )
-                    ) : (
-                      <div className="media-loading">Caricamento…</div>
-                    )}
-                    <figcaption>
-                      <div>
-                        <strong>
-                          {m.payload.caption || "Senza didascalia"}
-                        </strong>
-                        <small>{name(m.owner)}</small>
-                      </div>
-                      {m.owner === user && <Delete onClick={() => remove(m)} />}
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-            </>
-          )}
         </main>
         <footer className="desktop-footer">CAPODANNO 2027</footer>
       </div>
@@ -1038,7 +942,6 @@ export default function App() {
               food: "Aggiungi cibo o bevande",
               expense: "Aggiungi spesa",
               transfer: "Segna un versamento",
-              media: "Carica foto o video",
               settings: "Impostazioni",
             }[modal]
           }
@@ -1317,41 +1220,11 @@ export default function App() {
                   </p>
                 </>
               )}
-              {modal === "media" && (
-                <>
-                  <Field label="Foto o video">
-                    <input
-                      name="file"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
-                      required
-                      disabled={!db}
-                    />
-                  </Field>
-                  <p className="form-note">
-                    Foto fino a 5 MB, video fino a 20 MB. Visibili solo al
-                    gruppo.{" "}
-                    {!db && "Collega Supabase per attivare i caricamenti."}
-                  </p>
-                  <Field label="Una didascalia (facoltativa)">
-                    <input
-                      name="caption"
-                      maxLength={200}
-                      placeholder="Es. Il primo brindisi"
-                    />
-                  </Field>
-                </>
-              )}
-              <button
-                className="submit"
-                disabled={busy || (modal === "media" && !db)}
-              >
+              <button className="submit" disabled={busy}>
                 {busy
                   ? "Salvataggio…"
                   : modal === "profile"
                   ? "Salva il mio profilo"
-                  : modal === "media"
-                  ? "Carica file"
                   : "Salva"}
                 <Check size={18} />
               </button>
@@ -1375,7 +1248,6 @@ function Navigation({
         ["home", "Home", Home],
         ["organize", "Organizza", LayoutGrid],
         ["money", "Spese", Wallet],
-        ["memories", "Ricordi", Images],
       ].map(([key, label, Icon]: any) => (
         <button
           key={key}

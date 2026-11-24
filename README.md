@@ -1,12 +1,12 @@
 # Capodanno 2027
 
-Webapp mobile per il 31 dicembre 2026: React 19, TypeScript, Vite e Supabase. Quattro sezioni: Home, Organizza, Spese, Ricordi. Navigazione fissa; il contenuto scorre solo quando serve. Moduli a schermo intero su telefono, focus confinato e ritorno al controllo precedente.
+Webapp mobile per il 31 dicembre 2026: React 19, TypeScript, Vite e Supabase. Tre sezioni: Home, Organizza, Spese. Navigazione fissa; il contenuto scorre solo quando serve. Moduli a schermo intero su telefono, focus confinato e ritorno al controllo precedente.
 
 ## Avvio
 
 Node 22+: `npm ci`, poi `npm run dev`. Verifiche: `npm test` e `npm run build`.
 
-Senza variabili ambiente parte una **demo locale**, inizialmente vuota. I dati restano in localStorage in questo browser; foto/video richiedono Supabase. La demo non simula condivisione o un database attivo. Per azzerarla elimina le chiavi `mezzanotte-demo-v2` e `mezzanotte-demo-v2-user` dai dati del sito. I dati demo non vengono importati nel database.
+Senza variabili ambiente parte una **demo locale**, inizialmente vuota. I dati restano in localStorage in questo browser; i dati vengono condivisi solo dopo il collegamento a Supabase. La demo non simula condivisione o un database attivo. Per azzerarla elimina le chiavi `mezzanotte-demo-v2` e `mezzanotte-demo-v2-user` dai dati del sito. I dati demo non vengono importati nel database.
 
 ## Supabase gratuito
 
@@ -50,11 +50,12 @@ Senza secrets la funzione rifiuta l'invio con 503. Non collegare l'Auth Hook fin
 - Cibo/bevande/dolci: ciascuno indica cosa porta e ingredienti. Allergie visibili nel riepilogo.
 - Spese: l'autore è chi ha anticipato. Divisione uguale tra i profili selezionati, con distribuzione stabile dei centesimi residui. **Gli accompagnatori non generano quote separate**: il loro referente può tenerne conto nell'importo e nella divisione concordata. Per spese notturne seleziona solo chi dorme.
 - Saldo = anticipi meno quote più versamenti inviati confermati meno versamenti ricevuti confermati. Positivo = da ricevere; negativo = da mettere. Suggerimenti di rimborso derivati dai saldi; non vengono eseguiti pagamenti reali.
-- Album privato: foto fino a 5 MB e video fino a 20 MB per file; link firmati temporanei, niente file multimediali nel database. Formati ammessi nello schema. Le foto JPEG, PNG e WebP fino a 20 MB in ingresso vengono ridimensionate a un massimo di 1920 px e compresse in WebP prima del caricamento (massimo 5 MB in uscita). Le GIF restano originali, fino a 5 MB. Monitora lo spazio in Supabase. La riproduzione dipende dai codec supportati dal browser. Le URL vengono rinnovate con il caricamento periodico dei dati.
 - Aggiornamento dati ogni 20 secondi e al ritorno sulla finestra. Non scrive dati di esempio nel gruppo.
 
 ## Verifica manuale prima dell'uso
 
-Con due browser distinti: verifica rifiuto dell'invito errato, isolamento dei profili, voto unico, ripartizione di 1 € in tre quote, versamento non confermabile dal solo mittente, conferma da destinatario, foto leggibile da membri e non da visitatori esterni. Prova email + OTP e recupero del profilo da secondo browser. Questi test richiedono un progetto Supabase configurato e non sono sostituiti dai test locali di dominio.
+Con due browser distinti: verifica rifiuto dell'invito errato, isolamento dei profili, voto unico, ripartizione di 1 € in tre quote, versamento non confermabile dal solo mittente, conferma da destinatario, accesso ai dati negato ai visitatori esterni. Prova email + OTP e recupero del profilo da secondo browser. Questi test richiedono un progetto Supabase configurato e non sono sostituiti dai test locali di dominio.
 
 Il piano Free ha limiti di database, storage, traffico e possibile pausa per inattività: controlla il [listino Supabase](https://supabase.com/pricing). Nessuna credenziale Supabase è inclusa. Pagamenti, chat e quote personalizzate per accompagnatore restano fuori da questa versione.
+
+La sezione foto/video e i caricamenti sono stati rimossi dall’app. Le strutture storage esistenti sono conservate per non cancellare eventuali file storici. Nessun dato remoto viene eliminato da questa modifica.
