@@ -11,7 +11,7 @@ import {
   Users,
   MapPin,
   Utensils,
-  Sparkles,
+  CalendarDays,
   Settings,
   Heart,
   Trash2,
@@ -32,6 +32,7 @@ import {
 } from "./data";
 import { balances, settlements } from "./domain.mjs";
 import Login from "./Login";
+import Logo from "./Brand";
 const euro = (c: number) =>
   (c / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 const makeRow = (
@@ -285,7 +286,7 @@ export default function App() {
   if (!ready)
     return (
       <div className="splash">
-        <Sparkles size={32} />
+        <CalendarDays size={32} />
         <p>Prepariamo la serata…</p>
       </div>
     );
@@ -303,15 +304,9 @@ export default function App() {
       <div className="entry">
         <Logo />
         <div className="entry-copy">
-          <span className="eyebrow">31 DICEMBRE 2026 · INSIEME</span>
-          <h1>
-            Il bello è<br />
-            esserci.
-          </h1>
-          <p>
-            Un posto per organizzare la notte.
-            <br />E ritrovarne i ricordi.
-          </p>
+          <span className="eyebrow">CAPODANNO 2027</span>
+          <h1>Accesso al gruppo</h1>
+          <p>Inserisci il codice d’invito per accedere al gruppo.</p>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -346,7 +341,7 @@ export default function App() {
             </p>
           )}
         </div>
-        <p className="entry-foot">Una notte, tutte le nostre idee.</p>
+        <p className="entry-foot">Capodanno 2027</p>
       </div>
     );
   if (!profile && modal !== "profile")
@@ -354,12 +349,8 @@ export default function App() {
       <div className="entry">
         <Logo />
         <div className="entry-copy">
-          <span className="eyebrow">BENVENUTO NEL GRUPPO</span>
-          <h1>
-            Cominciamo
-            <br />
-            da te.
-          </h1>
+          <span className="eyebrow">PRIMO ACCESSO</span>
+          <h1>Il tuo profilo</h1>
           <p>
             Come ti chiami? Il tuo profilo sarà associato al tuo accesso. La
             presenza si conferma separatamente.
@@ -400,7 +391,7 @@ export default function App() {
               />
             </Field>
             <button disabled={busy}>
-              Ci sono anch’io <Sparkles size={18} />
+              Crea profilo <Check size={18} />
             </button>
           </form>
           {error && (
@@ -409,22 +400,18 @@ export default function App() {
             </p>
           )}
         </div>
-        <p className="entry-foot">Capodanno 2027 · si organizza, insieme.</p>
+        <p className="entry-foot">Capodanno 2027</p>
       </div>
     );
   return (
     <div className="app">
       <aside className="sidebar">
         <Logo />
-        <p className="sidebar-note">
-          Una notte.
-          <br />
-          Tutto il gruppo.
-        </p>
+        <p className="sidebar-note">31 dicembre 2026</p>
         <Navigation tab={tab} setTab={setTab} />
         <div className="side-year">
           20<span>27</span>
-          <small>IL PROSSIMO BEL RICORDO</small>
+          <small>31 DICEMBRE · 1 GENNAIO</small>
         </div>
       </aside>
       <div className="shell">
@@ -432,7 +419,7 @@ export default function App() {
           <div className="mobile-logo">
             <Logo />
           </div>
-          <span className="desktop-kicker">IL NOSTRO CAPODANNO</span>
+          <span className="desktop-kicker">CAPODANNO 2027</span>
           <div className="header-right">
             <span className="date-chip">
               31 dic <span>·</span> 01 gen
@@ -476,12 +463,7 @@ export default function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <span className="eyebrow">LA NOTTE CHE CI ASPETTA</span>
-                  <h1>
-                    Ciao, {profile?.payload.name.split(" ")[0]}
-                    <span className="accent">.</span>
-                  </h1>
-                  <p>Mettiamo insieme un bel Capodanno.</p>
+                  <h1>Riepilogo</h1>
                 </div>
                 <button
                   className="icon-button"
@@ -494,18 +476,15 @@ export default function App() {
               <section className="hero">
                 <div className="hero-top">
                   <span className="pill">CAPODANNO 2027</span>
-                  <Sparkles size={22} />
                 </div>
-                <h2>
-                  Il conto alla rovescia
-                  <br />
-                  inizia da noi.
-                </h2>
+                <h2>31 dicembre 2026</h2>
                 <div className="hero-bottom">
-                  <span>31 dicembre 2026</span>
-                  <span>Una notte da ricordare</span>
+                  <span>
+                    {places.find((p) => p.id === chosen?.payload.place)?.payload
+                      .title || "Posto da scegliere"}
+                  </span>
+                  <span>31 dic · 1 gen</span>
                 </div>
-                <div className="orb" aria-hidden="true" />
               </section>
               <div className="stats">
                 <button
@@ -518,7 +497,7 @@ export default function App() {
                   <strong>
                     {confirmed.reduce((n, p) => n + 1 + p.payload.guests, 0)}
                   </strong>
-                  <span>Ci siamo</span>
+                  <span>Confermati</span>
                 </button>
                 <button
                   onClick={() => {
@@ -530,17 +509,16 @@ export default function App() {
                   <strong>
                     {sleeping.reduce((n, p) => n + 1 + p.payload.guests, 0)}
                   </strong>
-                  <span>Restiamo a dormire</span>
+                  <span>Pernottamenti</span>
                 </button>
                 <button onClick={() => setTab("money")}>
                   <Wallet />
                   <strong>{euro(Math.max(0, -(balance[user] || 0)))}</strong>
-                  <span>Devi ancora mettere</span>
+                  <span>Da versare</span>
                 </button>
               </div>
               <div className="section-title">
-                <h2>Facciamo il punto</h2>
-                <span>PASSO DOPO PASSO</span>
+                <h2>La tua partecipazione</h2>
               </div>
               <div className="home-grid">
                 <button
@@ -551,14 +529,14 @@ export default function App() {
                     <Check />
                   </span>
                   <div>
-                    <small>LA TUA PRESENZA</small>
+                    <small>PRESENZA</small>
                     <h3>
                       {labels[profile?.payload.status] || "Da confermare"}
                     </h3>
                     <p>
                       {profile?.payload.sleep
                         ? "Ti fermi anche a dormire"
-                        : "Una risposta e ci organizziamo meglio"}
+                        : "Pernottamento non richiesto"}
                     </p>
                   </div>
                   <span className="edit-label">Modifica</span>
@@ -574,15 +552,17 @@ export default function App() {
                     <MapPin />
                   </span>
                   <div>
-                    <small>IL NOSTRO POSTO</small>
+                    <small>POSTO</small>
                     <h3>
                       {places.find((p) => p.id === chosen?.payload.place)
-                        ?.payload.title || "Dove ci troviamo?"}
+                        ?.payload.title || "Da scegliere"}
                     </h3>
                     <p>
                       {places.length
-                        ? `${places.length} proposte da scoprire`
-                        : "La prima proposta potrebbe essere la tua"}
+                        ? `${places.length} ${
+                            places.length === 1 ? "proposta" : "proposte"
+                          } da votare`
+                        : "Nessuna proposta"}
                     </p>
                   </div>
                 </button>
@@ -596,8 +576,8 @@ export default function App() {
               >
                 <Utensils size={20} />
                 <span>
-                  <strong>A tavola, senza pensieri</strong>
-                  <small>Aggiungi allergie e scegli cosa portare</small>
+                  <strong>Cibo e allergie</strong>
+                  <small>Preferenze alimentari e lista di cosa portare</small>
                 </span>
                 <Plus size={20} />
               </button>
@@ -605,15 +585,11 @@ export default function App() {
           )}
           {tab === "organize" && (
             <>
-              <PageTitle
-                eyebrow="OGNUNO FA LA SUA PARTE"
-                title="Organizziamoci."
-                text="Le idee diventano una serata."
-              />
+              <PageTitle title="Organizza" />
               <div className="segmented" aria-label="Categorie">
                 {[
                   ["people", "Presenze"],
-                  ["places", "Posto"],
+                  ["places", "Posto e voti"],
                   ["food", "Cibo"],
                   ["sleep", "Dormire"],
                 ].map(([key, label]) => (
@@ -665,15 +641,15 @@ export default function App() {
               {section === "places" && (
                 <>
                   <SectionTitle
-                    title="Un posto per tutti"
+                    title="Proposte e voti"
                     action="Proponi"
                     onClick={() => open("place")}
                   />
                   {!places.length && (
                     <Empty
                       icon={<MapPin />}
-                      title="Dove facciamo mezzanotte?"
-                      text="Una casa, una baita, un posto speciale. Inizia con una proposta."
+                      title="Nessuna proposta"
+                      text="Aggiungi un posto. I partecipanti potranno votarlo."
                       action="Proponi un posto"
                       onClick={() => open("place")}
                     />
@@ -709,6 +685,9 @@ export default function App() {
                         )}
                         <div className="card-footer">
                           <button
+                            aria-pressed={votes(p.id).some(
+                              (v) => v.owner === user
+                            )}
                             className={
                               votes(p.id).some((v) => v.owner === user)
                                 ? "vote active"
@@ -729,7 +708,14 @@ export default function App() {
                             }
                           >
                             <Heart size={17} />
-                            {votes(p.id).length} voti
+                            <span>
+                              {votes(p.id).some((v) => v.owner === user)
+                                ? "Votato"
+                                : "Vota"}
+                            </span>
+                            <span className="vote-count">
+                              {votes(p.id).length}
+                            </span>
                           </button>
                           {admin && (
                             <button
@@ -762,7 +748,7 @@ export default function App() {
               {section === "food" && (
                 <>
                   <SectionTitle
-                    title="Ognuno porta qualcosa"
+                    title="Cibo e bevande"
                     action="Aggiungi"
                     onClick={() => open("food")}
                   />
@@ -772,7 +758,7 @@ export default function App() {
                   >
                     <Utensils size={20} />
                     <span>
-                      <strong>Prima di pensare al menu</strong>
+                      <strong>Allergie e preferenze</strong>
                       <small>
                         Indica allergie e cosa non mangi nel tuo profilo.
                       </small>
@@ -802,9 +788,9 @@ export default function App() {
                   {!foods.length && (
                     <Empty
                       icon={<Utensils />}
-                      title="La tavola è ancora da riempire"
+                      title="Nessun elemento aggiunto"
                       text="Scrivi cosa porti, incluse bevande e ingredienti."
-                      action="Aggiungi qualcosa"
+                      action="Aggiungi cibo o bevande"
                       onClick={() => open("food")}
                     />
                   )}
@@ -834,7 +820,7 @@ export default function App() {
               {section === "sleep" && (
                 <>
                   <SectionTitle
-                    title="Chi resta per la colazione?"
+                    title="Pernottamenti"
                     action="La mia scelta"
                     onClick={() => open("profile")}
                   />
@@ -878,11 +864,7 @@ export default function App() {
           )}
           {tab === "money" && (
             <>
-              <PageTitle
-                eyebrow="CONTI CHIARI, SERATA LEGGERA"
-                title="La cassa comune."
-                text="Chi anticipa, chi versa. Tutto qui."
-              />
+              <PageTitle title="Spese" />
               <section className="money-hero">
                 <span>IL TUO SALDO</span>
                 <h2>{euro(Math.abs(balance[user] || 0))}</h2>
@@ -891,7 +873,7 @@ export default function App() {
                     ? "Da mettere"
                     : (balance[user] || 0) > 0
                     ? "Da ricevere"
-                    : "Tutto in pari, per ora"}
+                    : "Saldo in pari"}
                 </p>
                 <div>
                   <small>Spese del gruppo</small>
@@ -910,8 +892,8 @@ export default function App() {
               {!expenses.length && (
                 <Empty
                   icon={<Wallet />}
-                  title="Si parte da zero"
-                  text="Hai anticipato qualcosa? Registra la spesa e scegli con chi dividerla."
+                  title="Nessuna spesa"
+                  text="Registra un anticipo e seleziona i partecipanti alla spesa."
                 />
               )}
               <div className="list">
@@ -992,11 +974,7 @@ export default function App() {
           )}
           {tab === "memories" && (
             <>
-              <PageTitle
-                eyebrow="LE COSE BELLE RESTANO"
-                title="C’eravamo noi."
-                text="Foto mosse, brindisi e video da riguardare."
-              />
+              <PageTitle title="Foto e video" />
               <SectionTitle
                 title={`${media.length} ricordi condivisi`}
                 action="Carica"
@@ -1005,9 +983,9 @@ export default function App() {
               {!media.length && (
                 <Empty
                   icon={<Camera size={32} />}
-                  title="Il primo ricordo deve ancora arrivare"
-                  text="Qui raccoglieremo la nostra serata, un momento alla volta."
-                  action="Carica un ricordo"
+                  title="Nessun file caricato"
+                  text="Carica foto e video da condividere con il gruppo."
+                  action="Carica file"
                   onClick={() => open("media")}
                 />
               )}
@@ -1034,7 +1012,7 @@ export default function App() {
                     <figcaption>
                       <div>
                         <strong>
-                          {m.payload.caption || "Una notte insieme"}
+                          {m.payload.caption || "Senza didascalia"}
                         </strong>
                         <small>{name(m.owner)}</small>
                       </div>
@@ -1046,9 +1024,7 @@ export default function App() {
             </>
           )}
         </main>
-        <footer className="desktop-footer">
-          CAPODANNO 2027 <span>Il bello è esserci.</span>
-        </footer>
+        <footer className="desktop-footer">CAPODANNO 2027</footer>
       </div>
       <div className="bottom-nav">
         <Navigation tab={tab} setTab={setTab} />
@@ -1057,13 +1033,13 @@ export default function App() {
         <ModalPanel
           title={
             {
-              profile: "Il tuo posto nel gruppo",
-              place: "Un’idea per il posto",
-              food: "Cosa porti di buono?",
-              expense: "Hai anticipato qualcosa?",
+              profile: "Il tuo profilo",
+              place: "Proponi un posto",
+              food: "Aggiungi cibo o bevande",
+              expense: "Aggiungi spesa",
               transfer: "Segna un versamento",
-              media: "Un altro bel ricordo",
-              settings: "Il nostro spazio",
+              media: "Carica foto o video",
+              settings: "Impostazioni",
             }[modal]
           }
           onClose={() => {
@@ -1375,7 +1351,7 @@ export default function App() {
                   : modal === "profile"
                   ? "Salva il mio profilo"
                   : modal === "media"
-                  ? "Carica ricordo"
+                  ? "Carica file"
                   : "Salva"}
                 <Check size={18} />
               </button>
@@ -1383,16 +1359,6 @@ export default function App() {
           )}
         </ModalPanel>
       )}
-    </div>
-  );
-}
-function Logo() {
-  return (
-    <div className="logo">
-      <span className="logo-symbol">
-        <Sparkles size={19} />
-      </span>
-      mezzanotte<span className="accent">.</span>
     </div>
   );
 }
@@ -1438,22 +1404,10 @@ function Field({
     </label>
   );
 }
-function PageTitle({
-  eyebrow,
-  title,
-  text,
-}: {
-  eyebrow: string;
-  title: string;
-  text: string;
-}) {
+function PageTitle({ title }: { title: string }) {
   return (
     <div className="page-heading">
-      <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
-        <p>{text}</p>
-      </div>
+      <h1>{title}</h1>
     </div>
   );
 }

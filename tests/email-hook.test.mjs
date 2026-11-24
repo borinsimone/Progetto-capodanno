@@ -49,7 +49,7 @@ test("EmailJS riceve solo OTP firmati da Supabase; firme errate, alterazioni e r
     to_email: "member@example.com",
     email: "member@example.com",
     otp_code: "123456",
-    app_name: "Mezzanotte",
+    app_name: "Capodanno",
   });
   assert.equal(
     (

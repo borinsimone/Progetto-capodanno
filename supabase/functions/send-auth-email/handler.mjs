@@ -68,7 +68,7 @@ export function createEmailHook({
         to_email: user.email,
         email: user.email,
         otp_code: email.token,
-        app_name: "Mezzanotte",
+        app_name: "Capodanno",
       },
       ...(config.privateKey ? { accessToken: config.privateKey } : {}),
     };

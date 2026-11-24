@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import Logo from "./Brand";
 import { db } from "./data";
 
 export default function Login({
@@ -73,28 +73,9 @@ export default function Login({
   }
   return (
     <div className="entry">
-      <div className="logo">
-        <span className="logo-symbol">
-          <Sparkles size={19} />
-        </span>
-        mezzanotte<span className="accent">.</span>
-      </div>
+      <Logo />
       <div className="entry-copy">
-        <span className="eyebrow">IL TUO POSTO NEL GRUPPO</span>
-        <h1>
-          {sent ? (
-            <>
-              Controlla
-              <br />
-              la tua email.
-            </>
-          ) : (
-            <>
-              Il bello è<br />
-              esserci.
-            </>
-          )}
-        </h1>
+        <h1>{sent ? <>Codice di accesso</> : <>Accedi</>}</h1>
         <p>
           {sent
             ? `Inserisci il codice inviato a ${email}. Controlla anche lo spam.`
@@ -183,7 +164,7 @@ export default function Login({
           anche il codice d’invito. Accedere non conferma la tua presenza.
         </p>
       </div>
-      <p className="entry-foot">Capodanno 2027 · si organizza, insieme.</p>
+      <p className="entry-foot">Capodanno 2027</p>
     </div>
   );
 }

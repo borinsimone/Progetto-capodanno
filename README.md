@@ -1,4 +1,4 @@
-# Mezzanotte · Capodanno 2027
+# Capodanno 2027
 
 Webapp mobile per il 31 dicembre 2026: React 19, TypeScript, Vite e Supabase. Quattro sezioni: Home, Organizza, Spese, Ricordi. Navigazione fissa; il contenuto scorre solo quando serve. Moduli a schermo intero su telefono, focus confinato e ritorno al controllo precedente.
 
@@ -33,7 +33,7 @@ Il browser conserva la sessione personale; “Esci da questo dispositivo” la r
 
 La funzione `supabase/functions/send-auth-email` verifica la firma webhook e il timestamp Supabase prima di inviare codici via EmailJS. Non registra email, codici o risposte del provider nei log. Le chiavi EmailJS non entrano nel frontend. Le impostazioni degli inviti e i ruoli si trovano nello schema `private`, non esposto dalla Data API.
 
-1. Nell'account EmailJS Free crea un template con **To Email** `{{to_email}}`, **Subject** “Il tuo codice di accesso a Mezzanotte” e corpo contenente `{{otp_code}}`. Cc, Bcc e Auto-Reply devono restare vuoti/disabilitati. Il piano Free ha 200 richieste mensili condivise con gli altri utilizzi dell'account; l'app non attiva upgrade.
+1. Nell'account EmailJS Free crea un template con **To Email** `{{to_email}}`, **Subject** “Il tuo codice di accesso a Capodanno” e corpo contenente `{{otp_code}}`. Cc, Bcc e Auto-Reply devono restare vuoti/disabilitati. Il piano Free ha 200 richieste mensili condivise con gli altri utilizzi dell'account; l'app non attiva upgrade.
 2. In EmailJS Account > Security abilita le chiamate API da applicazioni non-browser. Se richiedi una private key per queste chiamate, usala esclusivamente lato server.
 3. Salva in `.env`: `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY`, l'eventuale `EMAILJS_PRIVATE_KEY` e `SEND_EMAIL_HOOK_SECRET`. Nessuno di questi valori deve avere prefisso VITE\_. Il segreto webhook deve essere casuale e distinto dal codice d'invito.
 4. Copia questi cinque valori nelle **Edge Function Secrets** di Supabase. Il plugin corrente distribuisce le funzioni ma non gestisce secrets o configurazione Auth: usa la dashboard autenticata o la CLI autenticata. Non committare file con valori reali.
