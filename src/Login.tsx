@@ -160,8 +160,8 @@ export default function Login({
           </div>
         )}
         <p className="form-note">
-          La tua email non viene mostrata al gruppo. Al primo accesso ti servirà
-          anche il codice d’invito. Accedere non conferma la tua presenza.
+          La tua email non viene mostrata al gruppo. Se apri il link d’invito,
+          l’ingresso nel gruppo è automatico. Accedere non conferma la tua presenza.
         </p>
       </div>
       <p className="entry-foot">Capodanno 2027</p>

@@ -29,6 +29,7 @@ import {
 import { balances, settlements } from "./domain.mjs";
 import Login from "./Login";
 import Logo from "./Brand";
+import { captureInvite, clearInvite } from "./invite.mjs";
 const euro = (c: number) =>
   (c / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 const makeRow = (
@@ -51,6 +52,7 @@ type Modal =
   | "settings"
   | null;
 export default function App() {
+  const [invitation] = useState(() => captureInvite());
   const [rows, setRows] = useState<Row[]>([]),
     [user, setUser] = useState(""),
     [joined, setJoined] = useState(false),
@@ -87,7 +89,18 @@ export default function App() {
       const current = ++revision;
       try {
         const id = await identity();
-        const m = id ? await membership() : { joined: false, admin: false };
+        let m = id ? await membership() : { joined: false, admin: false };
+        if (id && !m.joined && invitation) {
+          try {
+            await join(invitation);
+            m = await membership();
+          } catch (e) {
+            if (active) setError(message(e));
+          } finally {
+            clearInvite();
+          }
+        }
+        if (m.joined) clearInvite();
         const data = m.joined ? await readRows() : [];
         if (!active || current !== revision) return;
         setUser(id || "");
